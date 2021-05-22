@@ -1,0 +1,76 @@
+#!/bin/sh
+
+set -e -u -f +x
+
+SURPASS="${SURPASS-"$(command -v surpass)"}"
+. "${SURPASS}"
+
+opt_parse migrate 'key|force' ${1+"$@"}
+
+job_init
+
+PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR-"${HOME}/.password-store"}"
+
+surpass_yesno "Start migrating passwords from \"${PASSWORD_STORE_DIR}\"?" \
+  || surpass_bye 'Action aborted.'
+
+surpass_echo "Migrating..." >&2
+
+tmpnam="migrate.$$"
+tmpdir="${SURPASS_STORE}/${tmpnam}"
+job_push 'remove_all -f "${tmpdir}"'
+create_dir "${tmpdir}"
+
+cmd_dfs=''
+cmd_bfs="$(cat <<'EOT'
+  if ! case_in "${FILE}" '*.gpg'; then
+    return 0
+  fi
+
+  passname1="${SUBPATH%.gpg}"
+  passname2="${passname1}"
+
+  if is_dir "${PASSWORD_STORE_DIR}/${passname1}"; then
+    passname2="${passname2}_"
+  fi
+  while exists "${SURPASS_STORE}/${passname2}"; do
+    passname2="${passname2}_"
+  done
+  if ! (check_passname passname "${passname2}" >/dev/null); then
+    surpass_ekho "could not transform \"${passname1}\"" \
+                 'to a valid passname' >&2
+    return 0
+  else
+    if [ x"${passname1}" != x"${passname2}" ]; then
+      surpass_echo "Renamed \"${passname1}\" to \"${passname2}\"" >&2
+    fi
+  fi
+
+  unset -v password  # unexport
+  password="$(LC_ALL='' pass show "${passname1}")"
+
+  echo "${password}" | surpass_edit "${tmpnam}/${passname2}" >/dev/null
+  surpass_echo "Created passfiles of \"${passname2}\"" >&2
+EOT
+)"
+read_dir "${PASSWORD_STORE_DIR}" "${cmd_dfs}" "${cmd_bfs}"
+
+cmd_dfs="$(cat <<'EOT'
+  if is_dir "${FILE}"; then
+    return 0
+  fi
+  passname="${SUBPATH}"
+  surpass_echo "Installing passfiles of \"${passname}\"..." >&2
+  message="$(
+    surpass_move "${tmpnam}/${passname}" "${passname}" 2>&1
+  )" || {
+    echo "${message}" >&2
+    surpass_ekho "failed to install \"${passname}\"" >&2
+    return 0
+  }
+EOT
+)"
+cmd_bfs=''
+read_dir "${tmpdir}" "${cmd_dfs}" "${cmd_bfs}"
+
+surpass_echo 'All done! Cleaning up...' >&2

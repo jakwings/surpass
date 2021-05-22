@@ -1,0 +1,1440 @@
+#!/bin/sh
+
+#            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+#                    Version 2, December 2004
+#
+# Copyright (C) 2021 Jak.W https://github.com/jakwings/surpass
+#
+# Everyone is permitted to copy and distribute verbatim or modified
+# copies of this license document, and changing it is allowed as long
+# as the name is changed.
+#
+#            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+#   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+#
+#  0. You just DO WHAT THE FUCK YOU WANT TO.
+
+# Better than nothing: http://www.in-ulm.de/~mascheck/various/set-e/
+set -e -u -f +x
+
+# should rewrite this program in C using well protected memory
+LC_ALL=C EOL='
+'
+export LC_ALL
+
+#export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+export SURPASS_NAME="${0##*/}"
+export SURPASS_HOME="${SURPASS_HOME-${HOME}/.config/surpass}"
+export SURPASS_STORE="${SURPASS_HOME}/store"
+export SURPASS_KEYDIR="${SURPASS_HOME}/keys"
+export SURPASS_TMPDIR="${SURPASS_HOME}/temp"
+export SURPASS_KEEPER="${SURPASS_HOME}/.un."
+export SURPASS_PASSWORD_LENGTH="${SURPASS_PASSWORD_LENGTH-25}"
+export SURPASS_PASSWORD_GREP="${SURPASS_PASSWORD_GREP-}"
+export SURPASS_PASSWORD_CHARSET="${SURPASS_PASSWORD_CHARSET-"[[:graph:]]"}"
+export SURPASS_CLIPBOARD_COPY="${SURPASS_CLIPBOARD_COPY-}"
+export SURPASS_CLIPBOARD_PASTE="${SURPASS_CLIPBOARD_PASTE-}"
+export SURPASS_CLIPBOARD_TIMEOUT="${SURPASS_CLIPBOARD_TIMEOUT-45}"
+export SURPASS_CMD_GREP="${SURPASS_CMD_GREP-"grep -e"}"
+
+help() (
+  set -e
+  unset -v cmd
+  if [ 0 -lt "$#" ]; then cmd="$1"; fi
+
+  if [ yes != "${cmd+yes}" ]; then
+    echo "A simple password manager for just yourself.
+
+Usage: ${SURPASS_NAME} [<command> [<argument>]... [<option>]...]
+
+Options take the form of <name>=<value> or just <name>.
+
+Commands:"
+  fi
+
+  set -- 'help' '[<command>]' \
+         'Show usage of commands or this program.' \
+         'init' '[key|force]...' \
+         'Initialize a new key pair for the password store.' \
+         'new' '<passname> [key|size|charset|grep|push|copy|force]...' \
+         'Generate a new password and save it in a passfile.' \
+         'show' '<passname> [line|grep|copy|force]...' \
+         'Extract the password from a passfile.' \
+         'edit' '<passname> [key|push|show|copy|force]...' \
+         'Update a passfile with input from stdin.' \
+         'find|search' '<pattern> [tree]...' \
+         'Search for passfiles in the store.' \
+         'tree' '[<passname>]' \
+         'Show a tree-view of passfiles in a folder.' \
+         'list|ls' '[<passname>]' \
+         'Show a list of passfiles in a folder.' \
+         'copy|cp' '<passname> <newname> [force]...' \
+         'Copy a passfile or folder.' \
+         'move|mv|rename' '<passname> <newname> [force]...' \
+         'Move a passfile or folder.' \
+         'remove|rm|delete|del' '<passname> [all|force]...' \
+         'Erase a passfile or folder.' \
+         'own' '<passname> [key|force]...' \
+         'Claim ownership of passfiles.' \
+         'keys' '' \
+         'List all available key pairs.'
+
+  while [ 0 -lt "$#" ]; do
+    if [ yes != "${cmd+yes}" ]; then
+      echo "    ${1%%|*}${2:+" $2"}"
+      echo "         $3"
+      if case_in "$1" '*"|"*'; then
+        aliases="$(IFS='|'; printf '%s, ' ${1#*|})"
+        echo "         Command aliases: ${aliases%, }"
+      fi
+    else
+      if case_in "${cmd}" "$1"; then
+        echo "Usage: ${SURPASS_NAME} ${cmd} ${2}${EOL}  ${3}"
+        break
+      elif [ 3 -ge "$#" ]; then
+        surpass_ekho "found unknown command \"${cmd}\""
+        die
+      fi
+    fi
+    shift 3
+  done
+)
+
+echo() {
+  printf '%s\n' "$*"
+}
+surpass_echo() {
+  printf '\033[0;1;32m[%s]\033[0m %s\n' "${SURPASS_NAME}" "$*"
+}
+surpass_ekho() {
+  printf '\033[0;1;31m[%s]\033[0m %s\n' "${SURPASS_NAME}" "$*"
+}
+surpass_prompt() {
+  printf '\033[0;1;32m[%s]\033[0m %s' "${SURPASS_NAME}" "$*" >&2
+}
+surpass_yesno() (
+  set -e
+  surpass_prompt "$* [y/N] "
+  IFS='' read -r reply
+  case "${reply}" in (''|[!yY]*) return 1; esac
+)
+surpass_bye() {
+  surpass_echo "$*" >&2
+  exit 0
+}
+die() {
+  if [ 0 -lt "$#" ]; then surpass_ekho "#ERROR# $*" >&2; fi
+  exit 1
+}
+
+SURPASS_JOBS=''  # only one single queue
+job_clear() { SURPASS_JOBS=''; }
+job_init() { job_clear; trap '(set +e; job_run) >&2 || true' EXIT; }
+job_push() { SURPASS_JOBS="$*${EOL}#SURPASS#${EOL}${SURPASS_JOBS}"; }
+job_pop() { SURPASS_JOBS="${SURPASS_JOBS#*"${EOL}#SURPASS#${EOL}"}"; }
+job_run() { eval "SURPASS_JOBS=''; ${SURPASS_JOBS}"; }
+
+have() {
+  [ -x "$(command -v "$1" 2>/dev/null)" ]
+}
+case_in() {
+  eval "! case \"\$1\" in (${2:-\"\"}) false; esac"
+}
+shquote() {
+  if [ 0 -lt "$#" ]; then
+    set -- "$*"
+    printf "'"
+    while case_in "$1" "*\\'*"; do
+      set -- "${1#*\'}" "${1%%\'*}"
+      printf '%s' "$2'\\''"
+    done
+    printf '%s' "$1'"
+  fi
+}
+args_save() {
+  while [ 0 -lt "$#" ]; do
+    printf ' '
+    shquote "$1"
+    shift
+  done
+  printf ' '
+}
+pipe() {
+  if have cat; then
+    cat
+  else  # NULs die; a line must be ended with LF.
+    (set -e; while IFS='' read -r line; do printf '%s\n' "${line}"; done)
+  fi
+}
+
+exec 7<&0
+sttyx() {
+  [ -t 0 ] || return 0
+  if command -p -v stty >/dev/null 2>&1; then
+    command -p stty ${1+"$@"} || true
+  else
+    stty ${1+"$@"} || true
+  fi
+} <&7
+sttyx_save() {
+  STTY="$(shquote "$(sttyx -g)")${EOL}${STTY-}"
+}
+sttyx_load() {
+  set -- $STTY
+  if [ 0 -lt "$#" ]; then
+    [ 0 -ge "${#1}" ] || eval "sttyx $1"
+    shift
+    STTY="$(args_save ${1+"$@"})"
+  else
+    die 'could not find any sttyx save'
+  fi
+}
+
+parent_dir() {
+  case "$1" in ([!/]*) set -- "${PWD:-.}/$1"; esac
+  while true; do
+    case "$1" in
+      (/|'') return 1 ;;
+      (*/) set -- "${1%/}" ;;
+      (*//*) set -- "${1%//*}/${1##*/}" ;;
+      (*/./*) set -- "${1%/./*}/${1##*/./}" ;;
+      (*/.) set -- "${1%/.}" ;;
+      (.) echo ../; break ;;
+      (..|*/..) echo "$1/../"; break ;;
+      (*/*) echo "${1%/*}/"; break ;;  # $(keep EOL)
+      (*) echo ./; break
+    esac
+  done
+}
+exists() {
+  [ -e "$1" ] || [ -h "$1" ]
+}
+is_file() {
+  ! [ -d "$1" ] && [ -e "$1" ]
+}
+is_dir() {
+  ! [ -h "$1" ] && [ -d "$1" ]
+}
+is_empty_dir() (
+  set -e +f
+  is_dir "$1" || return 1
+  cd -- "$1" || return 1
+  # dotglob? any pattern below matches just itself
+  if ! (: [!.]* ..?* .[!.]*); then  # failglob?
+    ! (: [!.]*) && ! (: ..?*) && ! (: .[!.]*)
+  else  # nullglob?
+    set -- [!.]* ..?* .[!.]*
+    [ 0 -eq "$#" ] || {
+      [ 3 -eq "$#" ] \
+      && [ '[!.]*' = "$1" ] && [ '..?*' = "$2" ] && [ '.[!.]*' = "$3" ] \
+      && ! [ -e "$1" ] && ! [ -e "$2" ] && ! [ -e "$3" ] \
+      && ! [ -h "$1" ] && ! [ -h "$2" ] && ! [ -h "$3" ]
+    }
+  fi 2>/dev/null
+)
+# read_dir <dir> <cmd_dfs> [<cmd_bfs>]
+# e.g. read_dir / 'echo "[${FILEPATH}|${SUBPATH}|${FOLDER}|${FILE}]"'
+read_dir() (
+  set -e +f
+  cd -L -- "$1"
+  CMD_NEXT='' CMD_DFS="$2" CMD_BFS="${3-}" FOLDER="${4-}"
+  trap 'CMD_NEXT=1' URG  # kill -URG 0
+  set --
+  if ! (: [!.]* ..?* .[!.]*); then  # failglob?
+    ! (: [!.]*) || set -- ${1+"$@"} [!.]*
+    ! (: ..?*) || set -- ${1+"$@"} ..?*
+    ! (: .[!.]*) || set -- ${1+"$@"} .[!.]*
+  else
+    set -- [!.]* ..?* .[!.]*
+  fi 2>/dev/null
+  set -f
+  while [ 0 -lt "$#" ]; do
+    FILE="$1"; shift  # free memory as soon as recursively possible
+    [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
+    if [ '' != "${CMD_NEXT}" ]; then CMD_NEXT=''; continue; fi
+    FILEPATH="${PWD}/${FILE}"
+    SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+    [ 0 -ge "${#CMD_BFS}" ] || (eval "set -e; $CMD_BFS")
+    if [ '' != "${CMD_NEXT}" ]; then CMD_NEXT=''; continue; fi
+    [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
+      || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
+    [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
+    [ 0 -ge "${#CMD_DFS}" ] || (eval "set -e; $CMD_DFS")
+  done
+)
+bless_file() (
+  set -e
+  for file; do
+    if ! [ -h "${file}" ]; then
+      case "${file}" in (-*) file="./${file}"; esac
+      if [ -d "${file}" ]; then
+        chmod 0700 "${file}"
+      else
+        chmod 0400 "${file}"
+      fi
+    fi
+  done
+)
+curse_file() (
+  set -e
+  for file; do
+    if ! [ -h "${file}" ]; then
+      case "${file}" in (-*) file="./${file}"; esac
+      chmod u+w "${file}"
+    fi
+  done
+)
+create_dir() (
+  set -e
+  umask 0077
+  for dir; do
+    mkdir -p -- "${dir}"
+  done
+)
+remove() (
+  set -e
+  job_init
+  force='' empty='' verbose=''
+  if case_in "$1" '-*f*'; then force=yes; fi
+  if case_in "$1" '-*p*'; then empty=yes; fi
+  if case_in "$1" '-*v*'; then verbose=yes; fi
+  shift
+  for file; do
+    file="${file%/}"
+    if is_dir "${file}"; then
+      if ! is_empty_dir "${file}" && [ yes = "${force}" ]; then
+        continue
+      fi
+      job_push "bless_file $(shquote "${file}")"
+      curse_file "${file}"
+      rmdir -- "${file}"; job_pop
+      [ yes != "${verbose}" ] || echo "removed folder \"${file}\"" >&2
+    else
+      if ! exists "${file}" && [ yes = "${force}" ]; then
+        continue
+      fi
+      job_push "bless_file $(shquote "${file}")"
+      curse_file "${file}"
+      if [ -h "${file}" ] || ! [ -f "${file}" ] || ! [ -s "${file}" ]
+        # symlink? pipe? irregular file?
+      then
+        rm -- "${file}"
+      elif have srm; then
+        srm -z -- "${file}"
+      elif have shred; then
+        shred -u -z -- "${file}"
+      else
+        if have wc && have dd; then
+          size="$(wc -c < "${file}")"
+          for _ in 1 2 3; do
+            dd bs=1 count="${size}" 2>/dev/null </dev/urandom >"${file}"
+          done
+          dd bs=1 count="${size}" 2>/dev/null </dev/zero >"${file}"
+        fi
+        rm -- "${file}"
+      fi
+      job_pop
+      [ yes != "${verbose}" ] || echo "removed file \"${file}\"" >&2
+    fi
+    if [ yes = "${empty}" ]; then
+      file="$(parent_dir "${file}")"
+      while is_empty_dir "${file}"; do
+        file="${file%/}"
+        job_push "bless_file $(shquote "${file}")"
+        curse_file "${file}"
+        rmdir -- "${file}"; job_pop
+        [ yes != "${verbose}" ] || echo "removed folder \"${file}\"" >&2
+        file="$(parent_dir "${file}")"
+      done
+    fi
+  done
+)
+remove_all() {
+  if is_dir "$2"; then
+    read_dir "$2" "remove_all $1 \"\${FILEPATH}\""
+  fi
+  remove "$1" "$2"
+}
+
+# https://github.com/bugaevc/wl-clipboard
+# https://github.com/astrand/xclip
+ctrl_c() {
+  if [ 0 -lt "${#SURPASS_CLIPBOARD_COPY}" ]; then
+    (eval "set +e; ${SURPASS_CLIPBOARD_COPY}${EOL}")
+  elif have pbcopy; then
+    pbcopy
+  elif have wl-copy; then
+    wl-copy
+  elif have xclip; then
+    xclip -selection clipboard
+  else
+    die 'could not find the clipboard manager'
+  fi
+}
+ctrl_v() {
+  if [ 0 -lt "${#SURPASS_CLIPBOARD_PASTE}" ]; then
+    (eval "set +e; ${SURPASS_CLIPBOARD_PASTE}${EOL}")
+  elif have pbpaste; then
+    pbpaste
+  elif have wl-paste; then
+    wl-paste
+  elif have xclip; then
+    xclip -selection clipboard -out
+  else
+    die 'could not find the clipboard manager'
+  fi
+}
+show_password() (
+  set -e
+  unset -v password  # unexport
+  password="$1" show="$2" copy="$3"
+  shift
+  if [ show = "${show}" ]; then
+    if [ -t 1 ]; then
+      surpass_echo 'The password is shown below:' >&2
+      echo "${password}"
+    else
+      printf '%s' "${password}"
+    fi
+  fi
+  if [ copy = "${copy}" ]; then
+    surpass_echo 'The password will be removed from the clipboard' \
+                 "in ${SURPASS_CLIPBOARD_TIMEOUT} seconds." >&2
+    # kill the previous instance of surpass
+    {
+      pidfile="${SURPASS_TMPDIR}/clipboard.pid"
+      if exists "${pidfile}" && IFS='' read -r pid < "${pidfile}"; then
+        trap 'bless_file "${pidfile}" || true' TERM
+        curse_file "${pidfile}"
+        trap 'remove -f "${pidfile}" || true' TERM
+        echo "$$" > "${pidfile}"  # $$ = pid of the current process
+        if kill "${pid}" 2>/dev/null; then
+          { sleep 5 || true; remove -f "${pidfile}"; } &
+          while exists "${pidfile}"; do :; done
+        fi
+      fi
+      remove -f "${pidfile}"
+      backup="$(ctrl_v | openssl base64 -e)"  # keep NULs
+    }
+    printf '%s' "${password}" | ctrl_c
+    {
+      # restore clipboard content later
+      digest1="$(printf '%s' "${password}" | openssl dgst -sha512)"
+      unset -v password  # to oblivion asap
+      (
+        set -e
+        trap '' HUP
+        trap 'remove -f "${pidfile}" || true' EXIT
+        create_dir "$(parent_dir "${pidfile}")"
+        sleep "${SURPASS_CLIPBOARD_TIMEOUT}" &
+        echo "$!" > "${pidfile}"  # $! = pid of sleep
+        bless_file "${pidfile}"
+        wait 2>/dev/null || true
+        digest2="$(ctrl_v | openssl dgst -sha512)"
+        if [ x"${digest1}" = x"${digest2}" ]; then
+          echo "${backup}" | openssl base64 -d | ctrl_c
+        fi
+      ) &
+    }
+  fi
+)
+
+# assume the paths are sorted and contain no LFs
+path_tree() (
+  set -e
+  root="${1-.}"
+  if have tree && tree --fromfile . --noreport -N 2>/dev/null >&2 <&2
+  then
+    output="$(tree --fromfile . --noreport -N)${EOL}"
+    if [ 0 -lt "${#output}" ]; then
+      output="${root}${EOL}${output#*"${EOL}"}"
+    fi
+    printf '%s' "${output}"
+    return 0
+  fi
+  IFS="${EOL}"
+  set -- $(pipe)
+  IFS=/ prev='' i=0
+  for path; do
+    path="./${path}" i="$(( i + 1 ))" j=0
+    for compo in $path; do
+      [ 0 -lt "${#compo}" ] || continue
+      j="$(( j + 1 ))" k="$(( i - 1 ))"
+      : $(( s_${i}_${j} = 0 ))  # mark: no next sibling
+      if [ "${compo}" != "${prev%%/*}" ]; then
+        if [ 0 -lt "${#prev}" ]; then
+          while [ 0 -lt "${k}" ]; do
+            : $(( s_${k}_${j} = 1 ))
+            if [ 0 -eq "$(( p_${k}_${j} ))" ]; then
+              break
+            fi
+            k="$(( k - 1 ))"
+          done
+        fi
+        : $(( p_${i}_${j} = 0 ))  # mark: new component
+        prev=''
+      else
+        : $(( p_${i}_${j} = 1 ))  # mark: old component
+        prev="${prev#*/}"
+      fi
+    done
+    prev="${path}"
+  done
+  i=0
+  for path; do
+    path="./${path}" i="$(( i + 1 ))" j=0 s=''
+    for compo in $path; do
+      [ 0 -lt "${#compo}" ] || continue
+      j="$(( j + 1 ))"
+      if [ 0 -eq "$(( p_${i}_${j} ))" ]; then
+        if [ 1 -eq "${j}" ]; then
+          echo "${root}"
+        elif [ 0 -eq "$(( s_${i}_${j} ))" ]; then
+          echo "${s:+"${s%????}\`-- "}${compo}"
+        else
+          echo "${s}${compo}"
+        fi
+      fi
+      if [ 1 -lt "${j}" ] && [ 0 -eq "$(( s_${i}_${j} ))" ]; then
+        s="${s:+"${s%????}    "}|-- "
+      else
+        s="${s:+"${s%???}   "}|-- "
+      fi
+    done
+  done
+)
+
+check_path() {
+  case "$2" in
+    ('') die "found no content in $1: \"$2\"" ;;
+    ([!/]*|*/..|*/../*) die "found relative path in $1: \"$2\"" ;;
+    (*//*) die "found double slashes in $1: \"$2\"" ;;
+    (*"${EOL}"*) die "found line separator in $1: \"$2\"" ;;
+    (*) echo "${2%/}"
+  esac
+}
+check_name() {
+  case "$2" in
+    ('') die "found no content in $1: \"$2\"" ;;
+    (*[!a-zA-Z_0-9]*)
+      set -- "$1" "$2" "$(get_badchar "$1" '[!a-zA-Z_0-9]')"
+      die "found invalid character \"$3\" in $1: \"$2\""
+      ;;
+    (*) echo "$2"
+  esac
+}
+check_passname() {
+  case "$2" in
+    ('') die "found no content in $1 \"$2\"" ;;
+    (*/|*//*) die "found no component after \"/\" in $1 \"$2\"" ;;
+    (-*|*/-*) die "found leading \"-\" in $1 \"$2\"" ;;
+    (.*|*/.*) die "found leading \".\" in $1 \"$2\"" ;;
+    (*..*) die "found \"..\" in $1 \"$2\"" ;;
+    (*[!-/+a-z.A-Z_0-9@]*)
+      set -- "$1" "$2" "$(get_badchar "$2" '[!-/+a-z.A-Z_0-9@]')"
+      die "found invalid character \"$3\" in $1 \"$2\""
+      ;;
+    (*) echo "$2"
+  esac
+}
+get_badchar() {
+  eval 'printf "%c" "${1#"${1%%$2*}"}"'
+}
+get_passfile() {
+  set -- "${SURPASS_STORE}/${1}"
+  echo "$1"
+  exists "$1" \
+    || die "could not find passfile \"$1\" in the password store"
+}
+get_pubkey() {
+  set -- "${SURPASS_KEYDIR}/${1}.pub"
+  echo "$1"
+  exists "$1" \
+    || die "could not find public key \"$1\" in the password store"
+}
+get_seckey() {
+  set -- "${SURPASS_KEYDIR}/${1}.sec"
+  echo "$1"
+  exists "$1" \
+    || die "could not find secret key \"$1\" in the password store"
+}
+get_key() (
+  set -e
+  passfile="$1"
+  { IFS='' read -r key < "${passfile}" \
+    && case_in "${key}" '"X-Surpass-Key: "*' \
+    && key="$(check_name SURPASS_KEY "${key#'X-Surpass-Key: '}")"; } \
+    || die "passfile \"${passfile}\" was corrupted"
+  echo "${key}"
+)
+get_openssl() (
+  set -e
+  key="$1"
+  { IFS='' read -r openssl < "${key}" \
+    && case_in "${openssl}" '"X-Surpass-OpenSSL: "*' \
+    && openssl="${openssl#'X-Surpass-OpenSSL: '}"; } \
+    || die "keyfile \"${key}\" was corrupted"
+  if have "${openssl}"; then
+    echo "${openssl}"
+  else
+    echo openssl
+  fi
+)
+
+opt_charset() (
+  set -e
+  octets="$(seq 1 255)"  # avoid NUL
+  octets="$(printf '\\%03o' $octets)"
+  octets="$(printf '%b' "${octets}")"
+  octets="$(tr -c -d -- "$1" <<EOT
+${octets}
+EOT
+  )"
+  case "${octets}" in
+    ('') die "found no content in charset \"$1\"" ;;
+    (*[[:space:]]*) die "found white space in charset \"$1\"" ;;
+    (*[[:cntrl:]]*) die "found control character in charset \"$1\"" ;;
+    (*[![:graph:]]*) die "found non-ASCII character in charset \"$1\"" ;;
+    (*) echo "$1"
+  esac
+)
+opt_grep() {
+  # grep all by using an empty pattern
+  echo | $SURPASS_CMD_GREP "$1" >/dev/null \
+    || [ 0 -eq "$(( ${?} >> 1 ))" ] \
+    || die "\"$1\" is not a valid pattern"
+  echo "$1"  # please grep line by line
+}
+opt_size() {
+  [ 0 -le "$1" ] || [ 0 -ge "$1" ] || die "\"$1\" is not an integer"
+  # remove whitespace and leading zeros while preserving signness
+  echo "$(( ${1%%[0-9]*}${1#"${1%%[1-9]*}"} + 0 ))"
+}
+opt_reset() {
+  set -- "$(
+    set -e
+    eval "set -- $(export -p)"
+    for pair do
+      case "${pair}" in (SURPASS_OPT_*=*) echo "${pair%%=*}"; esac
+    done
+  )"
+  [ 0 -ge "${#1}" ] || eval "unset -v $1"
+}
+opt_parse() {
+  _optcmd="$1" _optset="$2"; shift 2
+
+  opt_reset
+  for _opt; do
+    unset -v _optopt _optarg
+    case "${_opt}" in
+      (*=*) _optopt="${_opt%%=*}" _optarg="${_opt#*=}" ;;
+      (*) _optopt="${_opt}" ;;
+    esac
+    if [ '' = "${_optset}" ] || ! case_in "${_optopt}" "${_optset}"; then
+      die "found unknown option \"${_opt}\""
+    fi
+    case "${_optopt}:${_optcmd}" in
+      (*:*:*) die "found unknown option \"${_opt}\"" ;;
+      (all:*) SURPASS_OPT_ALL="${_optarg-}" ;;
+      (charset:*) SURPASS_OPT_CHARSET="$(opt_charset "${_optarg-}")" ;;
+      (copy:*) SURPASS_OPT_COPY="${_optarg-}" ;;
+      (force:*) SURPASS_OPT_FORCE="${_optarg-}" ; ;;
+      (grep:*) SURPASS_OPT_GREP="$(opt_grep "${_optarg-}")" ;;
+      (key:*) SURPASS_OPT_KEY="${_optarg-}" ;;
+      (line:*) SURPASS_OPT_LINE="$(opt_size "${_optarg-}")" ;;
+      (push:*) SURPASS_OPT_PUSH="${_optarg-}" ;;
+      (show:*) SURPASS_OPT_SHOW="${_optarg-}" ;;
+      (size:*) SURPASS_OPT_SIZE="$(opt_size "${_optarg-}")" ;;
+      (tree:*) SURPASS_OPT_TREE="${_optarg-}" ;;
+      (*) die "found unknown option \"${_opt}\""
+    esac
+  done || die "failed while parsing option \"${_opt}\""
+
+  if case_in key "${_optset}"; then
+    SURPASS_KEY="${SURPASS_OPT_KEY:-surpass}"
+    SURPASS_KEY="$(check_name SURPASS_KEY "${SURPASS_KEY}")"
+    SURPASS_PUBKEY="$(get_pubkey "${SURPASS_KEY}" 2>/dev/null)" || true
+    SURPASS_SECKEY="$(get_seckey "${SURPASS_KEY}" 2>/dev/null)" || true
+  fi
+
+  unset -v _optcmd _optset _opt _optopt _optarg
+}
+
+# DON'T USE THIS FUNCTION!
+readpass() {
+  die 'readpass(): https://doc.libsodium.org/memory_management'  # FIXME
+  (
+    set -e
+    sttyx_save
+    trap sttyx_load EXIT
+    sttyx -echo echonl
+    unset -v pass1 pass2  # unexport
+    if [ new = "${1-}" ]; then
+      while true; do
+        surpass_prompt "Please enter your new passphrase: "
+        IFS='' read -r pass1
+        if [ 4 -le "${#pass1}" ] && [ 1023 -ge "${#pass1}" ]; then
+          break
+        fi
+        surpass_ekho "password length must be between 4 and 1023" >&2
+      done
+      surpass_prompt "Please rekey your new passphrase: "
+      IFS='' read -r pass2
+      [ x"${pass1}" = x"${pass2}" ] || die "passphrase mismatched"
+    else
+      surpass_prompt "Please enter the passphrase: "
+      IFS='' read -r pass1
+    fi
+    echo "${pass1}"
+  ) || die 'failed to read passphrase'
+}
+
+# https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail
+# https://en.wikipedia.org/wiki/PKCS7
+# https://en.wikipedia.org/wiki/S/MIME
+# https://en.wikipedia.org/wiki/Block_cipher_modes_of_operation
+encrypt() (
+  set -e
+  pubkey="$1" output="$2" cipher='aes256'
+  openssl="$(get_openssl "${pubkey}")"
+  "${openssl}" smime -encrypt -inform PEM -outform PEM \
+                     -out "${output}" -"${cipher}" "${pubkey}"
+)
+
+decrypt() (
+  set -e
+  seckey="$1" input="$2"
+  openssl="$(get_openssl "${seckey}")"
+  #unset -v password  # unexport
+  retry=3
+  while [ 0 -le "$(( retry -= 1 ))" ]; do
+    {
+      #password="$(readpass)" || die
+      #echo "${password}" |
+        "${openssl}" smime -decrypt -inform PEM -outform PEM \
+                           -inkey "${seckey}" \
+                           -in "${input}" #-passin stdin
+    } || {
+      [ -t 2 ] || die
+      surpass_ekho "Please try again." >&2
+      continue
+    }
+    break
+  done
+  [ 0 -le "${retry}" ]
+)
+
+reencrypt() (
+  set -e
+  passname="$1" passfile="$2"
+  name1="$3" key1="$4" name2="$5" key2="$6" tmpdir1="$7" tmpdir2="$8"
+
+  ! is_dir "${passfile}" || return 0
+  (check_passname passname "${passname}" >/dev/null 2>&1) || return 0
+
+  # ignore error messages
+  # get_seckey() is optional because key1 can be at a new location
+  { namesec="$(get_key "${passfile}")" \
+    && name1="${name1:-"${namesec}"}" \
+    && [ x"${namesec}" = x"${name1}" ]; } || return 0
+  key1="${key1:-"$(get_seckey "${name1}")"}" || return 0
+
+  if [ x"${name1}" = x"${name2}" ]; then
+    old=' old ' new=' new '
+  else
+    old=' ' new=' '
+  fi
+
+  surpass_echo "Decrypting the passfile of \"${passname}\"" \
+               "using the${old}key pair of \"${name1}\"..." >&2
+
+  unset -v password  # unexport
+  password="$(decrypt "${key1}" "${passfile}")" \
+    || die "failed to decrypt passfile \"${passfile}\""
+
+  tmpfile="${tmpdir1}/${passname}"
+  create_dir "$(parent_dir "${tmpfile}")"
+  cp -P -- "${passfile}" "${tmpfile}"
+
+  surpass_echo "Generating the passfile for \"${passname}\"" \
+               "using the${new}key pair of \"${name2}\"..." >&2
+
+  tmpfile="${tmpdir2}/${passname}"
+  create_dir "$(parent_dir "${tmpfile}")"
+  echo "${password}" | encrypt "${key2}" "${tmpfile}"
+  if ! [ -s "${tmpfile}" ]; then
+    die "failed to re-encrypt the secrets from \"${passfile}\""
+  fi
+  data="X-Surpass-Key: ${name2}${EOL}$(pipe < "${tmpfile}")"
+  echo "${data}" > "${tmpfile}"
+  bless_file "${tmpfile}"
+)
+
+edit_passfile() (
+  set -e
+  unset -v password  # unexport
+  passname="$1" passfile="$2" password="$3" namepub="$4" pubkey="$5"
+  tmpdir="$6" show="$7" copy="$8" push="$9"
+
+  if [ push = "${push}" ]; then
+    surpass_echo "Retrieving the old password from \"${passname}\"..." >&2
+    namesec="$(get_key "${passfile}")"
+    seckey="$(get_seckey "${namesec}")"
+    unset -v oldpass  # unexport
+    oldpass="$(decrypt "${seckey}" "${passfile}")" \
+      || die "failed to decrypt passfile \"${passfile}\""
+    password="${password}${EOL}${oldpass}"
+  fi
+
+  if ! exists "${passfile}"; then
+    passdir="$(parent_dir "${passfile}")"
+    job_push 'remove -f "${passdir}"'
+    create_dir "${passdir}"
+  fi
+
+  tmpfile="${tmpdir}/${passname}"
+  create_dir "$(parent_dir "${tmpfile}")"
+
+  # XXX: pipefail? anyways avoid file-based implementation of heredoc
+  echo "${password}" | encrypt "${pubkey}" "${tmpfile}"
+  [ -s "${tmpfile}" ] || die 'failed to encrypt the new password'
+  data="X-Surpass-Key: ${namepub}${EOL}$(pipe < "${tmpfile}")"
+  echo "${data}" > "${tmpfile}"
+  job_push 'bless_file "${passfile}"'
+  if exists "${passfile}"; then
+    curse_file "${passfile}"
+    mv -- "${tmpfile}" "$(parent_dir "${passfile}")"
+  else
+    mv -- "${tmpfile}" "${passfile}"
+  fi
+
+  show_password "${password%%"${EOL}"*}" "${show}" "${copy}"
+)
+
+# symlinks are treated as regular files
+move_passfile() (
+  set -e
+  job_init
+  mode="$1" force="$2" name1="$3" file1="$4" name2="$5" file2="$6"
+
+  action=''
+  case "${mode}" in
+    (move) action=Move ;;
+    (copy) action=Copy ;;
+    (*) die "move_passfile(): invalid mode \"${mode}\""
+  esac
+
+  if ! exists "${file1}"; then
+    die "could not found passfile \"${file1}\""
+  fi
+  if [ x"${name1}" = x"${name2}" ]; then
+    if is_dir "${file1}" && is_dir "${file2}"; then
+      die "folder \"${name1}\" and folder \"${name2}\" are the same"
+    fi
+    if is_file "${file1}" && is_file "${file2}"; then
+      die "passfile \"${name1}\" and passfile \"${name2}\" are the same"
+    fi
+  fi
+
+  if [ move = "${mode}" ] && is_dir "${file1}"; then
+    ! [ x"${name1}" = x"${name2%/*}" ] \
+      || die "could not move folder \"${name1}\" into itself"
+    ! case_in "${name2}" '"${name1}"/*' \
+      || die "could not move folder \"${name1}\" into its subfolder" \
+             "\"${name2#"${name1}/"}\""
+  fi
+
+  if [ force != "${force}" ] && is_dir "${file2}" \
+    && surpass_yesno "${action} \"${name1}\" into folder \"${name2}\"?"
+  then
+    move_passfile "${mode}" "${force}" \
+                  "${name1}" "${file1}" \
+                  "${name2}/${name1##*/}" "${file2}/${file1##*/}"
+    return 0
+  fi
+
+  if [ force != "${force}" ] && exists "${file2}"; then
+    type1=passfile type2=passfile
+    ! is_dir "${file1}" || type1=folder
+    ! is_dir "${file2}" || type2=folder
+    surpass_yesno "Overwrite ${type2} \"${name2}\"" \
+                  "with ${type1} \"${name1}\"?" \
+                  || surpass_bye 'Action aborted.'
+  fi
+
+  overwrite=''
+  if exists "${file2}"; then
+    # NOTE: a -> a ; a/b/c -> a/b ; a/b(/b) -> a
+    overwrite=yes
+  else
+    dir="${SURPASS_STORE}/${name2}"
+    while dir="$(parent_dir "${dir}")"; do
+      if is_file "${dir%/}"; then
+        dir="${dir#"${SURPASS_STORE}"}"
+        die "failed to create the folder: \"${dir%/}\" was a passfile"
+      fi
+      ! is_dir "${dir}" || break
+    done
+  fi
+
+  tmpdir="${SURPASS_TMPDIR}/${mode}.$$"
+  tmpfile1="${tmpdir}/${name1}"
+  tmpfile2="${tmpdir}/${name2}"
+  job_push 'remove_all -f "${tmpdir}"'
+
+  create_dir "$(parent_dir "${tmpfile1}")"
+  cp -R -P -- "${file1}" "$(parent_dir "${tmpfile1}")"
+  if [ yes = "${overwrite}" ]; then
+    create_dir "$(parent_dir "${tmpfile2}")"
+    cp -R -P -f -- "${file2}" "$(parent_dir "${tmpfile2}")"
+    job_push 'cp -R -P -f -- "${tmpfile2}" "$(parent_dir "${file2}")"'
+    remove_all -v "${file2}"
+  fi
+  if [ move = "${mode}" ]; then
+    job_push 'cp -R -P -f -- "${tmpfile1}" "$(parent_dir "${file1}")"'
+    remove_all -vf "${file1}"  # may overlap with file2
+  fi
+  dir="$(parent_dir "${file2}")"
+  job_push 'remove -f "${dir}"'
+  create_dir "${dir}"
+  job_push 'remove_all -f "${file2}"'
+  cp -R -P -v -- "${tmpfile1}" "${file2}"; job_pop; job_pop
+  [ move != "${mode}" ] || job_pop
+  [ yes != "${overwrite}" ] || job_pop
+)
+
+
+surpass_copy() (
+  set -e
+  job_init
+  if ! [ 2 -le "$#" ]; then help copy; die; fi
+  name1="$(check_passname passname "${1%/}")"
+  name2="$(check_passname passname "${2%/}")"
+  shift 2
+  opt_parse copy 'force' ${1+"$@"}
+
+  surpass_echo "Copying \"${name1}\" to \"${name2}\"..." >&2
+
+  file1="$(get_passfile "${name1}")"
+  file2="$(get_passfile "${name2}" 2>/dev/null)" || true
+  move_passfile copy "${SURPASS_OPT_FORCE+force}" \
+                "${name1}" "${file1}" "${name2}" "${file2}"
+
+  surpass_echo 'All done!' >&2
+)
+
+
+surpass_move() (
+  set -e
+  job_init
+  if ! [ 2 -le "$#" ]; then help move; die; fi
+  name1="$(check_passname passname "${1%/}")"
+  name2="$(check_passname passname "${2%/}")"
+  shift 2
+  opt_parse move 'force' ${1+"$@"}
+
+  surpass_echo "Moving \"${name1}\" to \"${name2}\"..." >&2
+
+  file1="$(get_passfile "${name1}")"
+  file2="$(get_passfile "${name2}" 2>/dev/null)" || true
+  move_passfile move "${SURPASS_OPT_FORCE+force}" \
+                "${name1}" "${file1}" "${name2}" "${file2}"
+
+  surpass_echo 'All done!' >&2
+)
+
+
+surpass_remove() (
+  set -e
+  job_init
+  if ! [ 1 -le "$#" ]; then help remove; die; fi
+  passname="$(check_passname passname "${1%/}")"; shift
+  opt_parse remove 'force|all' ${1+"$@"}
+
+  passfile="$(get_passfile "${passname}")"
+  if [ yes != "${SURPASS_OPT_FORCE+yes}" ]; then
+    if is_dir "${passfile}"; then
+      surpass_yesno "Remove *ALL* passfiles in folder \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    else
+      surpass_yesno "Remove the passfile of \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    fi
+  fi
+
+  job_push 'bless_file "${passfile}"'
+  if is_dir "${passfile}"; then
+    if is_empty_dir "${passfile}"; then
+      remove -v "${passfile}" \
+        || die "failed to remove empty folder \"${passname}\""
+    else
+      if [ yes != "${SURPASS_OPT_ALL+yes}" ]; then
+        job_pop
+        die "folder \"${passname}\" was not empty
+Please try: ${SURPASS_NAME} remove ${passname} all"
+      fi
+      remove_all -v "${passfile}" \
+        || die "failed to remove passfiles of \"${passname}\""
+    fi
+  else
+    remove -v "${passfile}" \
+      || die "failed to remove the passfile of \"${passname}\""
+  fi
+  job_pop
+)
+
+
+surpass_find() (
+  set -e
+  if ! [ 1 -le "$#" ]; then help find; die; fi
+  pattern="$(opt_grep "$1")"; shift
+  opt_parse find 'tree' ${1+"$@"}
+
+  list="$(surpass_list)"
+  list="$(echo "${list}" | $SURPASS_CMD_GREP "${pattern}")" \
+    || die 'could not find any passfile in the password store' \
+           "using pattern \"${pattern}\""
+
+  if [ yes = "${SURPASS_OPT_TREE+yes}" ]; then
+    echo "${list}" | path_tree '[Password Store]'
+  else
+    echo "${list}"
+  fi
+)
+
+
+surpass_tree() (
+  set -e
+  sub="${1+"${1%/}"}"
+  list="$(surpass_list ${1+"$@"})"
+  echo "${list}" | path_tree "${sub:-"[Password Store]"}"
+)
+
+
+surpass_list() (
+  set -e
+  dir="${SURPASS_STORE}" sub=''
+  if [ 0 -lt "$#" ]; then
+    sub="$(check_passname folder "${1%/}")"
+    dir="${dir}/${sub}"
+    shift
+  fi
+  opt_parse list '' ${1+"$@"}
+
+  if is_dir "${dir}"; then
+    list="$(
+      set -e
+      if have find && have sort; then
+        cd -L -- "${dir}"
+        list="$(find . -not -type d | sort)"
+        for path in $list; do
+          echo "${path#./}"
+        done
+      else
+        root="${sub:+"${sub}/"}"
+        read_dir "${dir}" 'is_dir "${FILE}" || echo "${root}${SUBPATH}"'
+      fi
+    )"
+    if [ 0 -lt "${#list}" ]; then
+      echo "${list}"
+    elif [ -t 2 ]; then
+      if [ '' != "${sub}" ]; then
+        surpass_ekho "could not find any passfile in folder \"${sub}\""
+      else
+        surpass_ekho 'could not find any passfile in the password store'
+      fi >&2
+      die
+    fi
+  elif exists "${dir}"; then
+    echo "${sub}"
+  else
+    if exists "${SURPASS_STORE}"; then
+      die "could not find folder \"${sub}\" in the password store"
+    else
+      die "could not find any passfile in the password store"
+    fi
+  fi
+)
+
+
+surpass_show() (
+  set -e
+  if ! [ 1 -le "$#" ]; then help show; die; fi
+  passname="$(check_passname passname "$1")"; shift
+  opt_parse show 'force|line|grep|copy' ${1+"$@"}
+
+  passfile="$(get_passfile "${passname}")"
+  if is_dir "${passfile}"; then
+    surpass_ekho "\"${passname}\" was a folder with passfiles:" >&2
+    surpass_list "${passname}" >&2
+    die
+  fi
+
+  line="${SURPASS_OPT_LINE-1}"
+  if [ 0 -ge "${line}" ]; then
+    die "found invalid line number \"${line}\""
+  fi
+
+  namesec="$(get_key "${passfile}")"
+  seckey="$(get_seckey "${namesec}")"
+
+  surpass_echo "Decrypting passfiles of \"${passname}\"" \
+               "using the key pair of \"${namesec}\"..." >&2
+
+  unset -v password  # unexport
+  password="$(decrypt "${seckey}" "${passfile}")" \
+    || die "failed to decrypt passfile \"${passfile}\""
+
+  if [ yes = "${SURPASS_OPT_GREP+yes}" ]; then
+    password="$(
+      echo "${password}" | $SURPASS_CMD_GREP "${SURPASS_OPT_GREP}"
+    )"
+  else
+    while [ 1 -lt "${line}" ]; do
+      case "${password}" in
+        (*"${EOL}"*) password="${password#*"${EOL}"}" ;;
+        (*) password=''; break
+      esac
+      : $(( line -= 1 ))
+    done
+    password="${password%%"${EOL}"*}"
+  fi
+
+  show_password "${password}" \
+                "${SURPASS_OPT_COPY-show}" "${SURPASS_OPT_COPY+copy}"
+)
+
+
+surpass_edit() (
+  set -e
+  job_init
+  if ! [ 1 -le "$#" ]; then help edit; die; fi
+  passname="$(check_passname passname "$1")"; shift
+  opt_parse edit 'key|force|push|show|copy' ${1+"$@"}
+
+  if passfile="$(get_passfile "${passname}" 2>/dev/null)"; then
+    if is_dir "${passfile}"; then
+      die "\"${passname}\" was a folder"
+    fi
+    if [ yes != "${SURPASS_OPT_FORCE+yes}" ]; then
+      surpass_yesno "overwrite the passfile of \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    fi
+  else
+    if [ yes = "${SURPASS_OPT_PUSH+yes}" ]; then
+      die "could not find passfile \"${passfile}\" in the password store"
+    fi
+  fi
+
+  if [ -t 2 ]; then
+    surpass_echo "Reading from standard input..." >&2
+  fi
+
+  unset -v password  # unexport
+  password="$(pipe)"
+
+  tmpdir="${SURPASS_TMPDIR}/edit.$$"
+  job_push 'remove_all -f "${tmpdir}"'
+
+  edit_passfile "${passname}" "${passfile}" "${password}" \
+                "${SURPASS_KEY}" "${SURPASS_PUBKEY}" "${tmpdir}" \
+                "${SURPASS_OPT_SHOW+show}" "${SURPASS_OPT_COPY+copy}" \
+                "${SURPASS_OPT_PUSH+push}"
+)
+
+
+surpass_own() (
+  set -e
+  job_init
+  if ! [ 1 -le "$#" ]; then help own; die; fi
+  passname="$(check_passname passname "${1%/}")"; shift
+  opt_parse own 'key|force' ${1+"$@"}
+
+  surpass_echo "Transfering ownership of \"${passname}\" to" \
+               "the key pair of \"${SURPASS_KEY}\"..." >&2
+
+  passfile="$(get_passfile "${passname}")"
+  if [ yes != "${SURPASS_OPT_FORCE+yes}" ]; then
+    if is_dir "${passfile}"; then
+      surpass_yesno "claim ALL passfiles in folder \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    else
+      surpass_yesno "claim the passfile of \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    fi
+  fi
+
+  store_name="${SURPASS_STORE##*/}"
+  store_pdir="$(parent_dir "${SURPASS_STORE}")"
+  tmpdir2="${SURPASS_TMPDIR}/reinit.$$"
+  tmpdir2_1="${tmpdir2}/old/${store_name}"
+  tmpdir2_2="${tmpdir2}/new/${store_name}"
+  job_push 'remove_all -f "${tmpdir2}"'
+  create_dir "${tmpdir2_1}" "${tmpdir2_2}"
+
+  job_push 'cp -R -P -f -- "${tmpdir2_1}" "${store_pdir}"'
+  if is_dir "${passfile}"; then
+    read_dir "${SURPASS_STORE}/${passname}" '
+      reencrypt "${passname}/${SUBPATH}" "${FILEPATH}" "" "" \
+                "${SURPASS_KEY}" "${SURPASS_PUBKEY}" \
+                "${tmpdir2_1}" "${tmpdir2_2}"
+    '
+  else
+    reencrypt "${passname}" "${passfile}" "" "" \
+              "${SURPASS_KEY}" "${SURPASS_PUBKEY}" \
+              "${tmpdir2_1}" "${tmpdir2_2}"
+  fi
+  cp -R -P -f -- "${tmpdir2_2}" "${store_pdir}"
+  job_pop
+
+  surpass_echo 'All done!' >&2
+)
+
+
+surpass_keys() (
+  set -e
+  opt_parse keys '' ${1+"$@"}
+
+  set -- "$(read_dir "${SURPASS_KEYDIR}" '' '
+    if is_dir "${FILE}"; then
+      kill -URG 0
+      return 0
+    fi
+    case "${FILE}" in (*.sec) echo "${SUBPATH%.sec}"; esac
+  ')"
+  if [ 0 -lt "$#" ]; then
+    printf '%s\n' "$@"
+  else
+    surpass_ekho "could not find any key pair," \
+                 "have you run \"${SURPASS_NAME} init\"?" >&2
+    die
+  fi
+)
+
+
+surpass_new() (
+  set -e
+  job_init
+  if ! [ 1 -le "$#" ]; then help new; die; fi
+  passname="$(check_passname passname "$1")"; shift
+  opt_parse new 'key|force|size|charset|grep|push|copy' ${1+"$@"}
+
+  surpass_echo "Generating a new password for \"${passname}\"" \
+               "using the key pair of \"${SURPASS_KEY}\"..." >&2
+
+  if ! exists "${SURPASS_PUBKEY}"; then
+    die "could not find the key pair of \"${SURPASS_KEY}\"
+Please try this first: ${SURPASS_NAME} init key=${SURPASS_KEY}"
+  fi
+
+  if passfile="$(get_passfile "${passname}" 2>/dev/null)"; then
+    if is_dir "${passfile}"; then
+      die "\"${passname}\" was a folder"
+    fi
+    if [ yes != "${SURPASS_OPT_FORCE+yes}" ]; then
+      surpass_yesno "overwrite the passfile of \"${passname}\"?" \
+        || surpass_bye 'Action aborted.'
+    fi
+  else
+    if [ yes = "${SURPASS_OPT_PUSH+yes}" ]; then
+      die "could not find passfile \"${passfile}\" in the password store"
+    fi
+  fi
+
+  size="${SURPASS_OPT_SIZE-"${SURPASS_PASSWORD_LENGTH}"}"
+  if [ 0 -ge "${size}" ]; then
+    die "found invalid password length \"${size}\""
+  fi
+
+  # TODO: eliminate weak/common passwords SURPASS_OPT_COMPLEX
+  # https://github.com/dropbox/zxcvbn
+  charset="${SURPASS_OPT_CHARSET-"${SURPASS_PASSWORD_CHARSET}"}"
+  pattern="${SURPASS_OPT_GREP-"${SURPASS_PASSWORD_GREP}"}"
+  valid='' retry=1000
+
+  unset -v password  # unexport
+  while [ 0 -le "$(( retry -= 1 ))" ]; do
+    password="$(
+      tr -c -d -- "${charset}" </dev/urandom |
+        dd bs=1 count="${size}" 2>/dev/null
+    )" || true
+
+    if [ "${size}" -ne "${#password}" ]; then
+      die "failed to generate a password of length ${size}"
+    fi
+
+    { echo "${password}" | $SURPASS_CMD_GREP "${pattern}" >/dev/null; } \
+      || continue
+
+    valid=yes
+    break
+  done
+
+  if [ yes != "${valid}" ]; then
+    die "failed to generate a password" \
+        "based on charset \"${charset}\" and pattern \"${pattern}\""
+  fi
+
+  tmpdir="${SURPASS_TMPDIR}/new.$$"
+  job_push 'remove_all -f "${tmpdir}"'
+
+  edit_passfile "${passname}" "${passfile}" "${password}" \
+                "${SURPASS_KEY}" "${SURPASS_PUBKEY}" "${tmpdir}" \
+                "${SURPASS_OPT_COPY-show}" "${SURPASS_OPT_COPY+copy}" \
+                "${SURPASS_OPT_PUSH+push}"
+)
+
+
+# https://en.wikipedia.org/wiki/X509
+surpass_init() (
+  set -e
+  job_init
+  opt_parse init 'key|force' ${1+"$@"}
+
+  surpass_echo 'Preparing a new key pair for the password store...' >&2
+
+  job_push 'remove -f "${SURPASS_HOME}"'
+  create_dir "${SURPASS_HOME}"
+  job_push 'remove -fp "${SURPASS_KEYDIR}" "${SURPASS_STORE}"'
+  create_dir "${SURPASS_KEYDIR}" "${SURPASS_STORE}"
+  job_push 'remove -fp "${SURPASS_TMPDIR}"'
+
+  tmpdir1="${SURPASS_TMPDIR}/init.$$"
+  tmpdir1_1="${tmpdir1}/old"
+  tmpdir1_2="${tmpdir1}/new"
+  job_push 'remove_all -f "${tmpdir1}"'
+  create_dir "${tmpdir1_1}" "${tmpdir1_2}"
+
+  namepub="${SURPASS_PUBKEY##*/}" namesec="${SURPASS_SECKEY##*/}"
+
+  if exists "${SURPASS_PUBKEY}" || exists "${SURPASS_SECKEY}"; then
+    if [ yes != "${SURPASS_OPT_FORCE+yes}" ]; then
+      surpass_yesno "overwrite the key pair of \"${SURPASS_KEY}\"?" \
+        || surpass_bye 'Action aborted.'
+    fi
+    oldpub="${tmpdir1_1}/${namepub}" oldsec="${tmpdir1_1}/${namesec}"
+    cp -P -- "${SURPASS_PUBKEY}" "${SURPASS_SECKEY}" "${tmpdir1_1}"
+  else
+    oldpub='' oldsec=''
+  fi
+  newpub="${tmpdir1_2}/${namepub}" newsec="${tmpdir1_2}/${namesec}"
+
+  surpass_echo "Generating a new key pair for \"${SURPASS_KEY}\"..." >&2
+
+  openssl="$(command -v openssl)" || die 'could not found openssl'
+  #unset -v password  # unexport
+  #password="$(readpass new)"
+  message="$(
+    #echo "${password}" |
+      "${openssl}" req -inform PEM -outform PEM \
+                       -x509 -days 65535 -newkey rsa:4096 \
+                       -subj "/CN=surpass:${SURPASS_KEY}" \
+                       -out "${newpub}" -keyout "${newsec}" \
+                       2>&1 #-passout stdin
+  )" || {
+    echo "${message}" >&2
+    die "failed to generate the new key pair for \"${SURPASS_KEY}\""
+  }
+  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe < "${newpub}")"
+  echo "${data}" > "${newpub}"
+  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe < "${newsec}")"
+  echo "${data}" > "${newsec}"
+
+  if [ '' != "${oldpub}" ] || [ '' != "${oldsec}" ]; then
+    surpass_echo 'Re-encrypting passwords from the old key pair...' >&2
+
+    store_name="${SURPASS_STORE##*/}"
+    store_pdir="$(parent_dir "${SURPASS_STORE}")"
+    tmpdir2="${SURPASS_TMPDIR}/reinit.$$"
+    tmpdir2_1="${tmpdir2}/old/${store_name}"
+    tmpdir2_2="${tmpdir2}/new/${store_name}"
+    job_push 'remove_all -f "${tmpdir2}"'
+    create_dir "${tmpdir2_1}" "${tmpdir2_2}"
+
+    job_push 'cp -R -P -f -- "${tmpdir2_1}" "${store_pdir}"'
+    read_dir "${SURPASS_STORE}" '
+      reencrypt "${SUBPATH}" "${FILEPATH}" \
+                "${SURPASS_KEY}" "${oldsec}" \
+                "${SURPASS_KEY}" "${newpub}" \
+                "${tmpdir2_1}" "${tmpdir2_2}"
+    '
+    cp -R -P -f -- "${tmpdir2_2}" "${store_pdir}"
+    job_pop
+  fi
+
+  if [ '' = "${oldpub}" ] && [ '' = "${oldsec}" ]; then
+    cp -P -f -- "${newpub}" "${newsec}" "${SURPASS_KEYDIR}"
+  else
+    job_push 'cp -P -f -- "${oldpub}" "${oldsec}" "${SURPASS_KEYDIR}"'
+    cp -P -f -- "${newpub}" "${newsec}" "${SURPASS_KEYDIR}"
+    job_pop
+  fi
+  bless_file "${SURPASS_PUBKEY}" "${SURPASS_SECKEY}"
+
+  job_push 'bless_file "${SURPASS_KEEPER}"'
+  if exists "${SURPASS_KEEPER}"; then
+    curse_file "${SURPASS_KEEPER}"
+  fi
+  echo 'KEEP THIS BEFORE UNINSTALLING SURPASS' > "${SURPASS_KEEPER}"
+
+  surpass_echo 'All done!' >&2
+)
+
+
+SURPASS_HOME="$(check_path SURPASS_HOME "${SURPASS_HOME}")"
+SURPASS_STORE="$(check_path SURPASS_STORE "${SURPASS_STORE}")"
+SURPASS_KEYDIR="$(check_path SURPASS_KEYDIR "${SURPASS_KEYDIR}")"
+SURPASS_TMPDIR="$(check_path SURPASS_TMPDIR "${SURPASS_TMPDIR}")"
+SURPASS_KEEPER="$(check_path SURPASS_KEEPER "${SURPASS_KEEPER}")"
+
+# surpass_main() {
+if [ surpass = "${SURPASS_NAME}" ]; then
+  # subcommand should run in subshell
+  sttyx_save
+  clean_up() {
+    sttyx_load
+    if is_dir "${SURPASS_HOME}"; then
+      if have find; then
+        find "${SURPASS_HOME}" -mindepth 1 -type d -empty -delete
+      else
+        read_dir "${SURPASS_HOME}" '
+          if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi
+        '
+      fi
+    fi
+  }
+  trap clean_up EXIT
+
+  if [ 0 -lt "$#" ]; then
+    action="$1"; shift
+  else
+    action=tree
+  fi
+  case "${action}" in
+    (help) help ${1+"$@"} ;;
+    (init) surpass_init ${1+"$@"} ;;
+    (new) surpass_new ${1+"$@"} ;;
+    (show) surpass_show ${1+"$@"} ;;
+    (edit) surpass_edit ${1+"$@"} ;;
+    (find|search) surpass_find ${1+"$@"} ;;
+    (tree) surpass_tree ${1+"$@"} ;;
+    (list|ls) surpass_list ${1+"$@"} ;;
+    (copy|cp) surpass_copy ${1+"$@"} ;;
+    (move|mv|rename) surpass_move ${1+"$@"} ;;
+    (remove|rm|delete|del) surpass_remove ${1+"$@"} ;;
+    (own) surpass_own ${1+"$@"} ;;
+    (keys) surpass_keys ${1+"$@"} ;;
+    (*)
+      if have "surpass-${action}"; then
+        cd -L -- "$(parent_dir "$0")"
+        export SURPASS="${PWD}/${SURPASS_NAME}"
+        exec "surpass-${action}" ${1+"$@"} 7<&-
+      else
+        surpass_ekho "found unknown action \"${action}\"${EOL}" >&2
+        surpass_ekho "for help please run: ${SURPASS_NAME} help" >&2
+        die
+      fi
+  esac
+fi
+# }
