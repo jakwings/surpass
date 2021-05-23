@@ -1008,7 +1008,11 @@ surpass_tree() (
   set -e
   sub="${1+"${1%/}"}"
   list="$(surpass_list ${1+"$@"})"
-  echo "${list}" | path_tree "${sub:-"[Password Store]"}"
+  if is_dir "${SURPASS_STORE}/${sub}"; then
+    echo "${list}" | path_tree "${sub:-"[Password Store]"}"
+  else
+    echo "${list}" | path_tree '[Password Store]'
+  fi
 )
 
 
