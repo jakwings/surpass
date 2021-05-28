@@ -716,7 +716,7 @@ decrypt() (
                            -inkey "${seckey}" \
                            -in "${input}" #-passin stdin
     } || {
-      [ -t 2 ] || die
+      [ -t 0 ] || die
       surpass_ekho "Please try again." >&2
       continue
     }
@@ -1042,7 +1042,7 @@ surpass_list() (
     )"
     if [ 0 -lt "${#list}" ]; then
       echo "${list}"
-    elif [ -t 2 ]; then
+    elif [ -t 1 ]; then
       if [ '' != "${sub}" ]; then
         surpass_ekho "could not find any passfile in folder \"${sub}\""
       else
@@ -1131,7 +1131,7 @@ surpass_edit() (
     fi
   fi
 
-  if [ -t 2 ]; then
+  if [ -t 0 ]; then
     surpass_echo "Reading from standard input..." >&2
   fi
 
