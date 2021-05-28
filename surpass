@@ -698,7 +698,7 @@ encrypt() (
   set -e
   pubkey="$1" output="$2" cipher='aes256'
   openssl="$(get_openssl "${pubkey}")"
-  "${openssl}" smime -encrypt -inform PEM -outform PEM \
+  "${openssl}" smime -encrypt -inform PEM -outform PEM -binary \
                      -out "${output}" -"${cipher}" "${pubkey}"
 )
 
