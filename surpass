@@ -453,6 +453,19 @@ path_tree() (
     printf '%s' "${output}"
     return 0
   fi
+  eval set -- $(
+    set -e
+    # \<LF> -> \<SP> ; <WS><WS>... -> <SP>
+    for pair in $(set); do
+      case "${pair}" in
+        (*=\(*) echo "${pair%%=*}=\$(: ${pair#*"=("}" ;;
+        (*) echo "${pair}" ;;
+      esac
+    done
+  )
+  for pair; do
+    case "${pair}" in ([sp]_[0-9]*=*) unset -v "${pair%%=*}"; esac
+  done
   IFS="${EOL}"
   set -- $(pipe)
   IFS=/ prev='' i=0
@@ -614,8 +627,8 @@ opt_size() {
 opt_reset() {
   set -- "$(
     set -e
-    eval "set -- $(export -p)"
-    for pair do
+    eval set -- $(export -p)  # \<LF> -> \<SP> ; <WS><WS>... -> <SP>
+    for pair; do
       case "${pair}" in (SURPASS_OPT_*=*) echo "${pair%%=*}"; esac
     done
   )"
