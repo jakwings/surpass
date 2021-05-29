@@ -453,16 +453,16 @@ path_tree() (
     printf '%s' "${output}"
     return 0
   fi
-  eval set -- $(
+  eval "set -- $(
     set -e
     # \<LF> -> \<SP> ; <WS><WS>... -> <SP>
     for pair in $(set); do
       case "${pair}" in
-        (*=\(*) echo "${pair%%=*}=\$(: ${pair#*"=("}" ;;
-        (*) echo "${pair}" ;;
+        (*=\(*) printf '%s ' "${pair%%=*}=\$(: ${pair#*"=("}" ;;
+        (*) printf '%s ' "${pair}"
       esac
     done
-  )
+  )"
   for pair; do
     case "${pair}" in ([sp]_[0-9]*=*) unset -v "${pair%%=*}"; esac
   done
