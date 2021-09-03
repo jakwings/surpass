@@ -145,9 +145,6 @@ ENVIRONMENT
      SURPASS_CMD_GREP
              The grep(1) command for filtering text content.
 
-SEE ALSO
-     openssl(1), openssl-smime(1), openssl-enc(1), tr(1), grep(1)
-
 HISTORY
      surpass is a simple password manager inspired by pass, opm and jpm.
      Unlike its forefather pass, surpass is implemented in a POSIX shell
@@ -159,5 +156,15 @@ HISTORY
       opm https://github.com/rnagy/opm
       jpm https://github.com/jeremyevans/jpm
 
+COPYRIGHT
+     Copyright (C) 2021 Jak.W https://github.com/jakwings/surpass
+
+       TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+      0. You just DO WHAT THE FUCK YOU WANT TO.
+
 BUGS
      Please report bugs to https://github.com/jakwings/surpass/issues
+
+SEE ALSO
+     openssl(1), openssl-smime(1), openssl-enc(1), tr(1), grep(1)
