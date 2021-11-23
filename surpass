@@ -17,7 +17,7 @@ export LC_ALL
 #export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
 export SURPASS_NAME="${0##*/}"
-export SURPASS_HOME="${SURPASS_HOME-${HOME}/.config/surpass}"
+export SURPASS_HOME="${SURPASS_HOME-"${HOME}/.config/surpass"}"
 export SURPASS_STORE="${SURPASS_HOME}/store"
 export SURPASS_KEYDIR="${SURPASS_HOME}/keys"
 export SURPASS_TMPDIR="${SURPASS_HOME}/temp"
@@ -318,7 +318,7 @@ remove() (
         shred -u -z -- "${file}"
       else
         if have wc && have dd; then
-          size="$(wc -c < "${file}")"
+          size="$(wc -c <"${file}")"
           for _ in 1 2 3; do
             dd bs=1 count="${size}" 2>/dev/null </dev/urandom >"${file}"
           done
@@ -396,11 +396,11 @@ show_password() (
     # kill the previous instance of surpass
     {
       pidfile="${SURPASS_TMPDIR}/clipboard.pid"
-      if exists "${pidfile}" && IFS='' read -r pid < "${pidfile}"; then
+      if exists "${pidfile}" && IFS='' read -r pid <"${pidfile}"; then
         trap 'bless_file "${pidfile}" || true' TERM
         curse_file "${pidfile}"
         trap 'remove -f "${pidfile}" || true' TERM
-        echo "$$" > "${pidfile}"  # $$ = pid of the current process
+        echo "$$" >"${pidfile}"  # $$ = pid of the current process
         if kill "${pid}" 2>/dev/null; then
           { sleep 5 || true; remove -f "${pidfile}"; } &
           while exists "${pidfile}"; do :; done
@@ -420,7 +420,7 @@ show_password() (
         trap 'remove -f "${pidfile}" || true' EXIT
         create_dir "$(parent_dir "${pidfile}")"
         sleep "${SURPASS_CLIPBOARD_TIMEOUT}" &
-        echo "$!" > "${pidfile}"  # $! = pid of sleep
+        echo "$!" >"${pidfile}"  # $! = pid of sleep
         bless_file "${pidfile}"
         wait 2>/dev/null || true
         digest2="$(ctrl_v | openssl dgst -sha512)"
@@ -567,7 +567,7 @@ get_seckey() {
 get_key() (
   set -e
   passfile="$1"
-  { IFS='' read -r key < "${passfile}" \
+  { IFS='' read -r key <"${passfile}" \
     && case_in "${key}" '"X-Surpass-Key: "*' \
     && key="$(check_name SURPASS_KEY "${key#'X-Surpass-Key: '}")"; } \
     || die "passfile \"${passfile}\" was corrupted"
@@ -576,7 +576,7 @@ get_key() (
 get_openssl() (
   set -e
   key="$1"
-  { IFS='' read -r openssl < "${key}" \
+  { IFS='' read -r openssl <"${key}" \
     && case_in "${openssl}" '"X-Surpass-OpenSSL: "*' \
     && openssl="${openssl#'X-Surpass-OpenSSL: '}"; } \
     || die "keyfile \"${key}\" was corrupted"
@@ -771,8 +771,8 @@ reencrypt() (
   if ! [ -s "${tmpfile}" ]; then
     die "failed to re-encrypt the secrets from \"${passfile}\""
   fi
-  data="X-Surpass-Key: ${name2}${EOL}$(pipe < "${tmpfile}")"
-  echo "${data}" > "${tmpfile}"
+  data="X-Surpass-Key: ${name2}${EOL}$(pipe <"${tmpfile}")"
+  echo "${data}" >"${tmpfile}"
   bless_file "${tmpfile}"
 )
 
@@ -804,8 +804,8 @@ edit_passfile() (
   # XXX: pipefail? anyways avoid file-based implementation of heredoc
   echo "${password}" | encrypt "${pubkey}" "${tmpfile}"
   [ -s "${tmpfile}" ] || die 'failed to encrypt the new password'
-  data="X-Surpass-Key: ${namepub}${EOL}$(pipe < "${tmpfile}")"
-  echo "${data}" > "${tmpfile}"
+  data="X-Surpass-Key: ${namepub}${EOL}$(pipe <"${tmpfile}")"
+  echo "${data}" >"${tmpfile}"
   job_push 'bless_file "${passfile}"'
   if exists "${passfile}"; then
     curse_file "${passfile}"
@@ -1345,10 +1345,10 @@ surpass_init() (
     echo "${message}" >&2
     die "failed to generate the new key pair for \"${SURPASS_KEY}\""
   }
-  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe < "${newpub}")"
-  echo "${data}" > "${newpub}"
-  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe < "${newsec}")"
-  echo "${data}" > "${newsec}"
+  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe <"${newpub}")"
+  echo "${data}" >"${newpub}"
+  data="X-Surpass-OpenSSL: ${openssl}${EOL}$(pipe <"${newsec}")"
+  echo "${data}" >"${newsec}"
 
   if [ '' != "${oldpub}" ] || [ '' != "${oldsec}" ]; then
     surpass_echo 'Re-encrypting passwords from the old key pair...' >&2
@@ -1385,7 +1385,7 @@ surpass_init() (
   if exists "${SURPASS_KEEPER}"; then
     curse_file "${SURPASS_KEEPER}"
   fi
-  echo 'KEEP THIS BEFORE UNINSTALLING SURPASS' > "${SURPASS_KEEPER}"
+  echo 'KEEP THIS BEFORE UNINSTALLING SURPASS' >"${SURPASS_KEEPER}"
 
   surpass_echo 'All done!' >&2
 )

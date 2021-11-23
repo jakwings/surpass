@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Copyright (C) 2021 Jak.W https://github.com/jakwings/surpass
+#
+#   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+#
+#  0. You just DO WHAT THE FUCK YOU WANT TO.
+
 set -e -u -f +x
 
 SURPASS="${SURPASS-"$(command -v surpass)"}"
