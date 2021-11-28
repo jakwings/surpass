@@ -22,6 +22,18 @@ export SURPASS_STORE="${SURPASS_HOME}/store"
 export SURPASS_KEYDIR="${SURPASS_HOME}/keys"
 export SURPASS_TMPDIR="${SURPASS_HOME}/temp"
 export SURPASS_KEEPER="${SURPASS_HOME}/.un."
+
+check_cmd() {
+  eval "set -- $1 \${${1}-x}"
+  if [ 1 -ge "$#" ]; then
+    printf '[%s] %s\n' "${SURPASS_NAME}" "#ERROR# $1 is empty"
+    exit 1
+  fi
+}
+check_cmd SURPASS_CLIPBOARD_COPY
+check_cmd SURPASS_CLIPBOARD_PASTE
+check_cmd SURPASS_CMD_GREP
+
 export SURPASS_PASSWORD_LENGTH="${SURPASS_PASSWORD_LENGTH-25}"
 export SURPASS_PASSWORD_GREP="${SURPASS_PASSWORD_GREP-}"
 export SURPASS_PASSWORD_CHARSET="${SURPASS_PASSWORD_CHARSET-"[[:graph:]]"}"
