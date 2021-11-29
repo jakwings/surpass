@@ -241,7 +241,7 @@ is_empty_dir() (
 # e.g. read_dir / 'echo "[${FILEPATH}|${SUBPATH}|${FOLDER}|${FILE}]"'
 read_dir() (
   set -e +f
-  cd -L -- "$1"
+  cd -- "$1"
   CMD_NEXT='' CMD_DFS="$2" CMD_BFS="${3-}" FOLDER="${4-}"
   trap 'CMD_NEXT=1' URG  # kill -URG 0
   set --
@@ -1047,7 +1047,7 @@ surpass_list() (
     list="$(
       set -e
       if have find && have sort; then
-        cd -L -- "${dir}"
+        cd -- "${dir}"
         list="$(find . -not -type d | sort)"
         for path in $list; do
           echo "${path#./}"
@@ -1448,8 +1448,10 @@ if [ surpass = "${SURPASS_NAME}" ]; then
     (keys) surpass_keys ${1+"$@"} ;;
     (*)
       if have "surpass-${action}"; then
-        cd -L -- "$(parent_dir "$0")"
+        cwd="${PWD}"
+        cd -- "$(parent_dir "$0")"
         export SURPASS="${PWD}/${SURPASS_NAME}"
+        cd -- "${cwd}"
         exec "surpass-${action}" ${1+"$@"} 7<&-
       else
         surpass_ekho "found unknown action \"${action}\"${EOL}" >&2
