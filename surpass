@@ -313,7 +313,7 @@ remove() (
       job_push "bless_file $(shquote "${file}")"
       curse_file "${file}"
       rmdir -- "${file}"; job_pop
-      [ yes != "${verbose}" ] || echo "removed folder \"${file}\"" >&2
+      [ yes != "${verbose}" ] || echo "removed folder \"${file}\""
     else
       if ! exists "${file}" && [ yes = "${force}" ]; then
         continue
@@ -339,7 +339,7 @@ remove() (
         rm -- "${file}"
       fi
       job_pop
-      [ yes != "${verbose}" ] || echo "removed file \"${file}\"" >&2
+      [ yes != "${verbose}" ] || echo "removed file \"${file}\""
     fi
     if [ yes = "${empty}" ]; then
       file="$(parent_dir "${file}")"
@@ -348,12 +348,12 @@ remove() (
         job_push "bless_file $(shquote "${file}")"
         curse_file "${file}"
         rmdir -- "${file}"; job_pop
-        [ yes != "${verbose}" ] || echo "removed folder \"${file}\"" >&2
+        [ yes != "${verbose}" ] || echo "removed folder \"${file}\""
         file="$(parent_dir "${file}")"
       done
     fi
   done
-)
+) >&2
 remove_all() {
   if is_dir "$2"; then
     read_dir "$2" "remove_all $1 \"\${FILEPATH}\""
