@@ -35,7 +35,7 @@ function __fish_surpass_seen_n_args
     set -l n $argv[1]
     set -l cli (commandline -poc)
     if string match --quiet -- '+*' $n
-        test (count $cli) -ge (math 0 - $n + 1)
+        test (count $cli) -ge (math 0 + $n + 1)
     else if string match --quiet -- '-*' $n
         test (count $cli) -le (math 0 - $n + 1)
     else
@@ -48,7 +48,7 @@ function __fish_surpass_seen_n_args_of_cmds
     set -e argv[1]
     set -l cli (commandline -poc)
     if string match --quiet -- '+*' $n
-        test (count $cli) -ge (math 0 - $n + 2) && contains -- "$cli[2]" $argv
+        test (count $cli) -ge (math 0 + $n + 2) && contains -- "$cli[2]" $argv
     else if string match --quiet -- '-*' $n
         test (count $cli) -le (math 0 - $n + 2) && contains -- "$cli[2]" $argv
     else
