@@ -59,13 +59,13 @@ Commands:"
 
   set -- 'help' '[<command>]' \
          'Show usage of commands or this program.' \
-         'init' '[key|force]...' \
+         'init' '[key=|force]...' \
          'Initialize a new key pair for the password store.' \
-         'new' '<passname> [key|size|charset|grep|push|copy|force]...' \
+         'new' '<passname> [key=|size=|charset=|grep=|push|copy|force]...' \
          'Generate a new password and save it in a passfile.' \
-         'show' '<passname> [line|grep|copy|force]...' \
+         'show' '<passname> [line=|grep=|copy|force]...' \
          'Extract the password from a passfile.' \
-         'edit' '<passname> [key|push|show|copy|force]...' \
+         'edit' '<passname> [key=|push|show|copy|force]...' \
          'Update a passfile with input from stdin.' \
          'find|search' '<pattern> [tree]...' \
          'Search for passfiles in the store.' \
@@ -79,7 +79,7 @@ Commands:"
          'Move a passfile or folder.' \
          'remove|rm|delete|del' '<passname> [all|force]...' \
          'Erase a passfile or folder.' \
-         'own' '<passname> [key|force]...' \
+         'own' '<passname> [key=|force]...' \
          'Claim ownership of passfiles.' \
          'keys' '' \
          'List all available key pairs.'

@@ -1,3 +1,5 @@
+SURPASS(1)                Read This Fantastic Manual                SURPASS(1)
+
 NAME
      surpass -- a simple password manager
 
@@ -16,7 +18,7 @@ DESCRIPTION
      the same host can eavesdrop on the running processes.  Please take great
      care about this.
 
-     surpass tree is executed if no <command> is specified.
+     `surpass tree' is executed if no <command> is specified.
 
 COMMANDS
      help [<command>]
@@ -38,16 +40,16 @@ COMMANDS
            be used to enforce a grep(1) pattern on the new password.  With an
            existing passfile and option `push' specified, the new password
            will be prepended to the original passfile instead of rewriting the
-           whole passfile.  Use option `copy' copy the password to the clip-
-           board.  Use option `force' to disable user interaction.
+           whole passfile.  Use option `copy' to copy the password to the
+           clipboard.  Use option `force' to disable user interaction.
 
      show <passname> [line= | grep= | copy | force]...
            Descrypt the passfile named <passname> from the password store and
            show the first line of the contents.  You can specify a line number
            in option `line' to show another line.  You can also filter the
            whole contents with a grep(1) pattern specified in option `grep'.
-           Option `grep' overrides option `line'.  Use option `copy' copy the
-           password to the clipboard.  Use option `force' to disable user
+           Option `grep' overrides option `line'.  Use option `copy' to copy
+           the password to the clipboard.  Use option `force' to disable user
            interaction.
 
      edit <passname> [key= | push | show | copy | force]...
@@ -57,8 +59,9 @@ COMMANDS
            password is not echoed back unless option `show' is specified.
            With an existing passfile and option `push' specified, the new
            password will be prepended to the original passfile instead of
-           rewriting the whole passfile.  Use option `copy' copy the password
-           to the clipboard.  Use option `force' to disable user interaction.
+           rewriting the whole passfile.  Use option `copy' to copy the pass-
+           word to the clipboard.  Use option `force' to disable user interac-
+           tion.
 
      find <pattern> [tree]...
            Search the password store and show a list of passfiles the names of
@@ -168,3 +171,5 @@ BUGS
 
 SEE ALSO
      openssl(1), openssl-smime(1), openssl-enc(1), tr(1), grep(1)
+
+EOF                            December 18, 2021                           EOF
