@@ -23,7 +23,7 @@ On the other hand, decryption requires a paired secret key which is
 protected by a passphrase from the user.
 This utility provides a series of commands for manipulating the password
 store which is a simple directory tree residing at
-.Pa ~/.config/surpass .
+.Qq Pa $HOME/.config/surpass .
 .Pp
 .Nm
 is design for a single-user environment where no other users on the same
@@ -163,7 +163,7 @@ in the password store.
 .describe-option-force
 .Pp
 Command aliases: mv rename
-.It Ic remove Ao passname Ac Ao newname Ac Oo all | force Oc Ns ...
+.It Ic remove Ao passname Ac Oo all | force Oc Ns ...
 Remove the passfile named
 .Ao passname Ac
 or remove all passfiles in the folder named

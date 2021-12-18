@@ -12,7 +12,7 @@ DESCRIPTION
      requires a paired secret key which is protected by a passphrase from the
      user.  This utility provides a series of commands for manipulating the
      password store which is a simple directory tree residing at
-     ~/.config/surpass.
+     "$HOME/.config/surpass".
 
      surpass is design for a single-user environment where no other users on
      the same host can eavesdrop on the running processes.  Please take great
@@ -94,7 +94,7 @@ COMMANDS
 
            Command aliases: mv rename
 
-     remove <passname> <newname> [all | force]...
+     remove <passname> [all | force]...
            Remove the passfile named <passname> or remove all passfiles in the
            folder named <passname> from the password store.  To remove a non-
            empty folder option `all' must be specified.  Use option `force' to
