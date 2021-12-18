@@ -34,8 +34,10 @@ end
 function __fish_surpass_seen_n_args
     set -l n $argv[1]
     set -l cli (commandline -poc)
-    if string match --quiet -- '-*' $n
+    if string match --quiet -- '+*' $n
         test (count $cli) -ge (math 0 - $n + 1)
+    else if string match --quiet -- '-*' $n
+        test (count $cli) -le (math 0 - $n + 1)
     else
         test (count $cli) -eq (math 0 + $n + 1)
     end
@@ -45,8 +47,10 @@ function __fish_surpass_seen_n_args_of_cmds
     set -l n $argv[1]
     set -e argv[1]
     set -l cli (commandline -poc)
-    if string match --quiet -- '-*' $n
+    if string match --quiet -- '+*' $n
         test (count $cli) -ge (math 0 - $n + 2) && contains -- "$cli[2]" $argv
+    else if string match --quiet -- '-*' $n
+        test (count $cli) -le (math 0 - $n + 2) && contains -- "$cli[2]" $argv
     else
         test (count $cli) -eq (math 0 + $n + 2) && contains -- "$cli[2]" $argv
     end
@@ -72,27 +76,27 @@ complete -c surpass -n '__fish_surpass_seen_nothing' \
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 help' \
                     -a "$cmds $aliases"
 
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -0 init' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +0 init' \
                     -a '(__fish_surpass_get_opts key= force)'
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 new' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 new' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 new' \
                     -a '(__fish_surpass_get_opts copy push size= charset= grep= key= force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 show' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 show' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 show' \
                     -a '(__fish_surpass_get_opts copy line= grep= force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 edit' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 edit' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 edit' \
                     -a '(__fish_surpass_get_opts copy push show key= force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 find search' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 find search' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 find search' \
                     -a '(__fish_surpass_get_opts tree)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 tree' \
@@ -101,28 +105,24 @@ complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 tree' \
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 list ls' \
                     -a '(surpass list)' -k
 
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 copy cp' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 copy cp' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 1 copy cp' \
-                    -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -2 copy cp' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +2 copy cp' \
                     -a '(__fish_surpass_get_opts force)' -k
 
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 move mv rename' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 move mv rename' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 1 move mv rename' \
-                    -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -2 move mv rename' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +2 move mv rename' \
                     -a '(__fish_surpass_get_opts force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 remove rm delete del' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 remove rm delete del' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 remove rm delete del' \
                     -a '(__fish_surpass_get_opts all force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 own' \
                     -a '(surpass list)' -k
-complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds -1 own' \
+complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +1 own' \
                     -a '(__fish_surpass_get_opts key= force)' -k
 
 
