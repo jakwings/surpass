@@ -1411,10 +1411,9 @@ SURPASS_KEEPER="$(check_path SURPASS_KEEPER "${SURPASS_KEEPER}")"
 
 # surpass_main() {
 if [ surpass = "${SURPASS_NAME}" ]; then
-  # subcommand should run in subshell
-  sttyx_save
+  #sttyx_save
   clean_up() {
-    sttyx_load
+    #sttyx_load
     if is_dir "${SURPASS_HOME}"; then
       if have find; then
         find "${SURPASS_HOME}" -mindepth 1 -type d -empty -delete
@@ -1425,6 +1424,7 @@ if [ surpass = "${SURPASS_NAME}" ]; then
       fi
     fi
   }
+  # subcommand should run in subshell
   trap clean_up EXIT
 
   if [ 0 -lt "$#" ]; then
@@ -1452,7 +1452,7 @@ if [ surpass = "${SURPASS_NAME}" ]; then
         cd -- "$(parent_dir "$0")"
         export SURPASS="${PWD}/${SURPASS_NAME}"
         cd -- "${cwd}"
-        exec "surpass-${action}" ${1+"$@"} 7<&-
+        "surpass-${action}" ${1+"$@"} 7<&-
       else
         surpass_ekho "found unknown action \"${action}\"${EOL}" >&2
         surpass_ekho "for help please run: ${SURPASS_NAME} help" >&2
