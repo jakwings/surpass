@@ -114,7 +114,7 @@ COMMANDS
            If an executable file named "surpass-<command>" can be found, exe-
            cute it with the command line <arguments> after assigning the
            filepath of the surpass program to the environment variable
-           SURPASS.
+           SURPASS.  The contents of surpass can be sourced by user scripts.
 
      Options take the form of <name>=<value> or just <name>.  An option <name>
      alone may not equal <name>="" (empty string).  But some options like

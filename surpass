@@ -172,7 +172,6 @@ pipe() {
   fi
 }
 
-exec 7<&0
 sttyx() {
   [ -t 0 ] || return 0
   if command -p -v stty >/dev/null 2>&1; then
@@ -1403,18 +1402,20 @@ surpass_init() (
 )
 
 
-SURPASS_HOME="$(check_path SURPASS_HOME "${SURPASS_HOME}")"
-SURPASS_STORE="$(check_path SURPASS_STORE "${SURPASS_STORE}")"
-SURPASS_KEYDIR="$(check_path SURPASS_KEYDIR "${SURPASS_KEYDIR}")"
-SURPASS_TMPDIR="$(check_path SURPASS_TMPDIR "${SURPASS_TMPDIR}")"
-SURPASS_KEEPER="$(check_path SURPASS_KEEPER "${SURPASS_KEEPER}")"
-
 # surpass_main() {
 if [ surpass = "${SURPASS_NAME}" ]; then
+  SURPASS_HOME="$(check_path SURPASS_HOME "${SURPASS_HOME}")"
+  SURPASS_STORE="$(check_path SURPASS_STORE "${SURPASS_STORE}")"
+  SURPASS_KEYDIR="$(check_path SURPASS_KEYDIR "${SURPASS_KEYDIR}")"
+  SURPASS_TMPDIR="$(check_path SURPASS_TMPDIR "${SURPASS_TMPDIR}")"
+  SURPASS_KEEPER="$(check_path SURPASS_KEEPER "${SURPASS_KEEPER}")"
+
+  #exec 7<&0
   #sttyx_save
   clean_up() {
     #sttyx_load
     if is_dir "${SURPASS_HOME}"; then
+      # SURPASS_HOME is guarded by SURPASS_KEEPER
       if have find; then
         find "${SURPASS_HOME}" -mindepth 1 -type d -empty -delete
       else
