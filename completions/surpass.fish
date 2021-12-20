@@ -77,7 +77,7 @@ complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 help' \
                     -a "$cmds $aliases"
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds +0 init' \
-                    -a '(__fish_surpass_get_opts key= force)'
+                    -a '(__fish_surpass_get_opts key= force)' -k
 
 complete -c surpass -n '__fish_surpass_seen_n_args_of_cmds 0 new' \
                     -a '(surpass list)' -k
@@ -153,7 +153,7 @@ function __fish_surpass_complete_user_cmd
 end
 
 complete -c surpass -n '__fish_surpass_seen_user_cmd' \
-                    -a '(__fish_surpass_complete_user_cmd)'
+                    -a '(__fish_surpass_complete_user_cmd)' -k
 
 set -l paths $PATH/surpass-*
 for cmd in (string replace -r '^.*/surpass-([^/]+)$' '$1' $paths)
