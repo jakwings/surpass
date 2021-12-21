@@ -259,21 +259,19 @@ read_dir() (
         || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
       FILEPATH="${PWD}/${FILE}"
-      (eval "set -e; $CMD_DFS")
+      eval " ${CMD_DFS} "
     done
   else
-    CMD_NEXT=''
-    trap 'CMD_NEXT="${CMD_NEXT%?}1"' URG  # kill -URG 0
+    CMD_NEXT=''  # to prune dir, make CMD_SKIP non-empty
     for FILE; do
-      CMD_NEXT="${CMD_NEXT}0"
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
       FILEPATH="${PWD}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
-      (eval "set -e; $CMD_BFS")
+      CMD_SKIP=''; eval " ${CMD_BFS} "; CMD_NEXT="${CMD_NEXT}0${CMD_SKIP:+1}"
     done
     while [ 0 -lt "$#" ]; do
       FILE="$1"; shift
       case "${CMD_NEXT}" in
-        (1*) CMD_NEXT="${CMD_NEXT#?}"; continue ;;
+        (01*) CMD_NEXT="${CMD_NEXT#??}"; continue ;;
         (*) CMD_NEXT="${CMD_NEXT#?}"
       esac
       [ -h "${FILE}" ] || ! [ -d "${FILE}" ] || {
@@ -1235,7 +1233,7 @@ surpass_keys() (
 
   set -- "$(read_dir "${SURPASS_KEYDIR}" '' '
     if is_dir "${FILE}"; then
-      kill -URG 0
+      CMD_SKIP=1
       return 0
     fi
     case "${FILE}" in (*.sec) echo "${SUBPATH%.sec}"; esac
