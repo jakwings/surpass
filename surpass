@@ -241,9 +241,7 @@ is_empty_dir() (
 read_dir() (
   set -e +f
   cd -- "$1"
-  CMD_NEXT='' CMD_DFS="$2" CMD_BFS="${3-}" FOLDER="${4-}"
-  trap 'CMD_NEXT=1' URG  # kill -URG 0
-  set --
+  CMD_DFS="$2" CMD_BFS="${3-}" FOLDER="${4-}"; shift "$#"
   if ! (: [!.]* ..?* .[!.]*); then  # failglob?
     ! (: [!.]*) || set -- ${1+"$@"} [!.]*
     ! (: ..?*) || set -- ${1+"$@"} ..?*
@@ -252,19 +250,36 @@ read_dir() (
     set -- [!.]* ..?* .[!.]*
   fi 2>/dev/null
   set -f
-  while [ 0 -lt "$#" ]; do
-    FILE="$1"; shift  # free memory as soon as recursively possible
-    [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-    if [ '' != "${CMD_NEXT}" ]; then CMD_NEXT=''; continue; fi
-    FILEPATH="${PWD}/${FILE}"
-    SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
-    [ 0 -ge "${#CMD_BFS}" ] || (eval "set -e; $CMD_BFS")
-    if [ '' != "${CMD_NEXT}" ]; then CMD_NEXT=''; continue; fi
-    [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
-      || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
-    [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-    [ 0 -ge "${#CMD_DFS}" ] || (eval "set -e; $CMD_DFS")
-  done
+  if [ 0 -ge "${#CMD_BFS}" ]; then
+    while [ 0 -lt "$#" ]; do
+      FILE="$1"; shift
+      [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
+      SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+      [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
+        || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
+      [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
+      FILEPATH="${PWD}/${FILE}"
+      (eval "set -e; $CMD_DFS")
+    done
+  else
+    CMD_SKIP=0 CMD_NEXT=''
+    trap 'CMD_SKIP=1' URG  # kill -URG 0
+    for FILE; do
+      [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
+      FILEPATH="${PWD}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+      (eval "set -e; $CMD_BFS")
+      CMD_NEXT="${CMD_NEXT}${CMD_SKIP}"; CMD_SKIP=0
+    done
+    while [ 0 -lt "$#" ]; do
+      FILE="$1"; shift
+      case "${CMD_NEXT}" in
+        (1*) CMD_NEXT="${CMD_NEXT#?}"; continue ;;
+        (*) CMD_NEXT="${CMD_NEXT#?}" CMD_SKIP=0
+      esac
+      [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
+        || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
+    done
+  fi
 )
 bless_file() (
   set -e
