@@ -27,8 +27,7 @@ tmpdir="${SURPASS_STORE}/${tmpnam}"
 job_push 'remove_all -f "${tmpdir}"'
 create_dir "${tmpdir}"
 
-cmd_dfs=''
-cmd_bfs="$(cat <<'EOT'
+cmd_bfs() {
   if ! case_in "${FILE}" '*.gpg'; then
     return 0
   fi
@@ -43,12 +42,11 @@ cmd_bfs="$(cat <<'EOT'
     passname2="${passname2}_"
   done
   if ! (check_passname passname "${passname2}" >/dev/null); then
-    surpass_ekho "could not transform \"${passname1}\"" \
-                 'to a valid passname' >&2
+    surpass_ekho "could not transform \"${passname1}\" to a valid passname"
     return 0
   else
     if [ x"${passname1}" != x"${passname2}" ]; then
-      surpass_echo "Renamed \"${passname1}\" to \"${passname2}\"" >&2
+      surpass_echo "Renamed \"${passname1}\" to \"${passname2}\""
     fi
   fi
 
@@ -56,27 +54,25 @@ cmd_bfs="$(cat <<'EOT'
   password="$(LC_ALL='' pass show "${passname1}")"
 
   echo "${password}" | surpass_edit "${tmpnam}/${passname2}" >/dev/null
-  surpass_echo "Created passfiles of \"${passname2}\"" >&2
-EOT
-)"
-read_dir "${PASSWORD_STORE_DIR}" "${cmd_dfs}" "${cmd_bfs}"
+  surpass_echo "Created passfiles of \"${passname2}\""
+} >&2
 
-cmd_dfs="$(cat <<'EOT'
+read_dir "${PASSWORD_STORE_DIR}" '' cmd_bfs
+
+cmd_dfs() {
   if is_dir "${FILE}"; then
     return 0
   fi
   passname="${SUBPATH}"
-  surpass_echo "Installing passfiles of \"${passname}\"..." >&2
+  surpass_echo "Installing passfiles of \"${passname}\"..."
   message="$(
     surpass_move "${tmpnam}/${passname}" "${passname}" 2>&1
   )" || {
-    echo "${message}" >&2
-    surpass_ekho "failed to install \"${passname}\"" >&2
-    return 0
+    echo "${message}"
+    surpass_ekho "failed to install \"${passname}\""
   }
-EOT
-)"
-cmd_bfs=''
-read_dir "${tmpdir}" "${cmd_dfs}" "${cmd_bfs}"
+} >&2
+
+read_dir "${tmpdir}" cmd_dfs
 
 surpass_echo 'All done! Cleaning up...' >&2

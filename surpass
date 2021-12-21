@@ -1234,9 +1234,9 @@ surpass_keys() (
   set -- "$(read_dir "${SURPASS_KEYDIR}" '' '
     if is_dir "${FILE}"; then
       CMD_SKIP=1
-      return 0
+    else
+      case "${FILE}" in (*.sec) echo "${SUBPATH%.sec}"; esac
     fi
-    case "${FILE}" in (*.sec) echo "${SUBPATH%.sec}"; esac
   ')"
   if [ 0 -lt "$#" ]; then
     printf '%s\n' "$@"
