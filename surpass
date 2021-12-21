@@ -262,22 +262,24 @@ read_dir() (
       (eval "set -e; $CMD_DFS")
     done
   else
-    CMD_SKIP=0 CMD_NEXT=''
-    trap 'CMD_SKIP=1' URG  # kill -URG 0
+    CMD_NEXT=''
+    trap 'CMD_NEXT="${CMD_NEXT%?}1"' URG  # kill -URG 0
     for FILE; do
+      CMD_NEXT="${CMD_NEXT}0"
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
       FILEPATH="${PWD}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
       (eval "set -e; $CMD_BFS")
-      CMD_NEXT="${CMD_NEXT}${CMD_SKIP}"; CMD_SKIP=0
     done
     while [ 0 -lt "$#" ]; do
       FILE="$1"; shift
       case "${CMD_NEXT}" in
         (1*) CMD_NEXT="${CMD_NEXT#?}"; continue ;;
-        (*) CMD_NEXT="${CMD_NEXT#?}" CMD_SKIP=0
+        (*) CMD_NEXT="${CMD_NEXT#?}"
       esac
-      [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
-        || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
+      [ -h "${FILE}" ] || ! [ -d "${FILE}" ] || {
+        SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+        read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
+      }
     done
   fi
 )
