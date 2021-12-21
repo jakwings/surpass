@@ -258,14 +258,14 @@ read_dir() (
       [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
         || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-      FILEPATH="${PWD}/${FILE}"
+      FILEPATH="${PWD%/}/${FILE}"
       eval " ${CMD_DFS} "
     done
   else
     CMD_NEXT=''  # to prune dir, make CMD_SKIP non-empty
     for FILE; do
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-      FILEPATH="${PWD}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+      FILEPATH="${PWD%/}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
       CMD_SKIP=''; eval " ${CMD_BFS} "; CMD_NEXT="${CMD_NEXT}0${CMD_SKIP:+1}"
     done
     while [ 0 -lt "$#" ]; do
@@ -1466,7 +1466,7 @@ if [ surpass = "${SURPASS_NAME}" ]; then
       if have "surpass-${action}"; then
         cwd="${PWD}"
         cd -- "$(parent_dir "$0")"
-        export SURPASS="${PWD}/${SURPASS_NAME}"
+        export SURPASS="${PWD%/}/${SURPASS_NAME}"
         cd -- "${cwd}"
         "surpass-${action}" ${1+"$@"} 7<&-
       else
