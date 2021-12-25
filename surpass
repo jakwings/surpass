@@ -238,6 +238,7 @@ is_empty_dir() (
 )
 # read_dir <dir> <cmd_dfs> [<cmd_bfs>]
 # e.g. read_dir / 'echo "[${FILEPATH}|${SUBPATH}|${FOLDER}|${FILE}]"'
+# to prune dir, make CMD_SKIP non-empty
 read_dir() (
   set -e +f
   cd -- "$1"
@@ -254,15 +255,13 @@ read_dir() (
     while [ 0 -lt "$#" ]; do
       FILE="$1"; shift
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-      SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
-      [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
+      FILEPATH="${PWD%/}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
+      CMD_SKIP=''; eval " ${CMD_DFS} "
+      [ 0 -lt "${#CMD_SKIP}" ] || [ -h "${FILE}" ] || ! [ -d "${FILE}" ] \
         || read_dir "${FILE}" "${CMD_DFS}" "${CMD_BFS}" "${SUBPATH}"
-      [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
-      FILEPATH="${PWD%/}/${FILE}"
-      eval " ${CMD_DFS} "
     done
   else
-    CMD_NEXT=''  # to prune dir, make CMD_SKIP non-empty
+    CMD_NEXT=''
     for FILE; do
       [ -e "${FILE}" ] || [ -h "${FILE}" ] || continue
       FILEPATH="${PWD%/}/${FILE}" SUBPATH="${FOLDER:+"${FOLDER}/"}${FILE}"
@@ -1060,14 +1059,14 @@ surpass_list() (
   if is_dir "${dir}"; then
     list="$(
       set -e
+      root="${sub:+"${sub}/"}"
       if have find && have sort; then
         cd -- "${dir}"
         list="$(find . -not -type d | sort)"
         for path in $list; do
-          echo "${path#./}"
+          echo "${root}${path#./}"
         done
       else
-        root="${sub:+"${sub}/"}"
         read_dir "${dir}" 'is_dir "${FILE}" || echo "${root}${SUBPATH}"'
       fi
     )"
