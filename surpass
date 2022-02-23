@@ -427,8 +427,9 @@ show_password() (
         trap 'remove -f "${pidfile}" || true' TERM
         echo "$$" >"${pidfile}"  # $$ = pid of the current process
         if kill "${pid}" 2>/dev/null; then
-          { sleep 5 || true; remove -f "${pidfile}"; } &
+          { sleep 5 || true; remove -f "${pidfile}"; } & pid="$!"
           while exists "${pidfile}"; do :; done
+          kill "${pid}" 2>/dev/null || true
         fi
       fi
       remove -f "${pidfile}"
@@ -616,7 +617,7 @@ opt_charset() (
   set -e
   octets="$(seq 1 255)"  # avoid NUL
   octets="$(printf '\\%03o' $octets)"
-  octets="$(printf '%b' "${octets}")"
+  octets="$(printf "${octets}")"
   octets="$(tr -c -d -- "$1" <<EOT
 ${octets}
 EOT
