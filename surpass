@@ -6,13 +6,13 @@
 #
 #  0. You just DO WHAT THE FUCK YOU WANT TO.
 
-# Better than nothing: http://www.in-ulm.de/~mascheck/various/set-e/
-set -e -u -f +x
+# TODO: rewrite this program in C using well protected memory
 
-# should rewrite this program in C using well protected memory
-LC_ALL=C EOL='
+# Better than nothing: http://www.in-ulm.de/~mascheck/various/set-e/
+set -e -u -f +x; unset -v _ IFS; export LC_ALL=C
+
+EOL='
 '
-export LC_ALL
 
 #export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
@@ -432,7 +432,7 @@ show_password() (
           kill "${pid}" 2>/dev/null || true
         fi
       fi
-      remove -f "${pidfile}"
+      remove -f "${pidfile}"; trap - TERM
       backup="$(ctrl_v | openssl base64 -e)"  # keep NULs
     }
     printf '%s' "${password}" | ctrl_c
@@ -444,9 +444,9 @@ show_password() (
         set -e
         trap '' HUP
         trap 'remove -f "${pidfile}" || true' EXIT
+        sleep "${SURPASS_CLIPBOARD_TIMEOUT}" & pid="$!"
         create_dir "$(parent_dir "${pidfile}")"
-        sleep "${SURPASS_CLIPBOARD_TIMEOUT}" &
-        echo "$!" >"${pidfile}"  # $! = pid of sleep
+        echo "${pid}" >"${pidfile}"  # $! = pid of sleep
         bless_file "${pidfile}"
         wait 2>/dev/null || true
         digest2="$(ctrl_v | openssl dgst -sha512)"
@@ -693,14 +693,15 @@ opt_parse() {
 }
 
 # DON'T USE THIS FUNCTION!
-readpass() {
+readpass() (
   die 'readpass(): https://doc.libsodium.org/memory_management'  # FIXME
-  (
+  unset -v pass1 pass2  # unexport
+  # XXX: workaround (nullified set -e) in conditional statement
+  pass1="$(
     set -e
     sttyx_save
     trap sttyx_load EXIT
     sttyx -echo echonl
-    unset -v pass1 pass2  # unexport
     if [ new = "${1-}" ]; then
       while true; do
         surpass_prompt "Please enter your new passphrase: "
@@ -718,8 +719,9 @@ readpass() {
       IFS='' read -r pass1
     fi
     echo "${pass1}"
-  ) || die 'failed to read passphrase'
-}
+  )" || die 'failed to read passphrase'
+  echo "${pass1}"
+)
 
 # https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail
 # https://en.wikipedia.org/wiki/PKCS7

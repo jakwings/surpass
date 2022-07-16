@@ -6,7 +6,7 @@
 #
 #  0. You just DO WHAT THE FUCK YOU WANT TO.
 
-set -e -u -f +x
+set -e -u -f +x; unset -v _ IFS; export LC_ALL=C
 
 SURPASS="${SURPASS-"$(command -v surpass)"}"
 . "${SURPASS}"
