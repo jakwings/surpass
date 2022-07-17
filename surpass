@@ -419,10 +419,11 @@ show_password() (
     surpass_echo 'The password will be removed from the clipboard' \
                  "in ${SURPASS_CLIPBOARD_TIMEOUT} seconds." >&2
     # kill the previous instance of surpass
-    pidfile="${SURPASS_TMPDIR}/clipboard.pid"
     {
+      pidfile="${SURPASS_TMPDIR}/clipboard.pid"
       if exists "${pidfile}" && IFS='' read -r pid <"${pidfile}"; then
         kill "${pid}" 2>/dev/null || true
+        sleep 0.5  # wait for restore
       fi
       remove -f "${pidfile}"
       backup="$(ctrl_v | openssl base64 -e)"  # keep NULs
@@ -430,21 +431,24 @@ show_password() (
     printf '%s' "${password}" | ctrl_c
     {
       # restore clipboard content later
-      digest1="$(printf '%s' "${password}" | openssl dgst -sha512)"
+      digest="$(printf '%s' "${password}" | openssl dgst -sha512)"
+      restore='
+        if [ x"${digest}" = x"$(ctrl_v | openssl dgst -sha512)" ]; then
+          echo "${backup}" | openssl base64 -d | ctrl_c
+        fi
+      '
       unset -v password  # to oblivion asap
       (
         set -e
         trap '' HUP
         trap 'remove -f "${pidfile}" || true' EXIT
+        trap "${restore}" TERM
         create_dir "$(parent_dir "${pidfile}")"
         sleep "${SURPASS_CLIPBOARD_TIMEOUT}" & pid="$!"
         echo "${pid}" >"${pidfile}"  # $! = pid of sleep
         bless_file "${pidfile}"
         wait 2>/dev/null || true
-        digest2="$(ctrl_v | openssl dgst -sha512)"
-        if [ x"${digest1}" = x"${digest2}" ]; then
-          echo "${backup}" | openssl base64 -d | ctrl_c
-        fi
+        eval " ${restore} "
       ) &
     }
   fi
@@ -1429,9 +1433,9 @@ if [ surpass = "${SURPASS_NAME}" ]; then
         find "${SURPASS_STORE}" "${SURPASS_TMPDIR}" \
              -mindepth 1 -type d -empty -delete
       else
-        cmd='if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi'
-        read_dir "${SURPASS_STORE}" "${cmd}"
-        read_dir "${SURPASS_TMPDIR}" "${cmd}"
+        cmd_dfs='if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi'
+        read_dir "${SURPASS_STORE}" "${cmd_dfs}"
+        read_dir "${SURPASS_TMPDIR}" "${cmd_dfs}"
       fi
     fi
   }
