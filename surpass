@@ -419,20 +419,12 @@ show_password() (
     surpass_echo 'The password will be removed from the clipboard' \
                  "in ${SURPASS_CLIPBOARD_TIMEOUT} seconds." >&2
     # kill the previous instance of surpass
+    pidfile="${SURPASS_TMPDIR}/clipboard.pid"
     {
-      pidfile="${SURPASS_TMPDIR}/clipboard.pid"
       if exists "${pidfile}" && IFS='' read -r pid <"${pidfile}"; then
-        trap 'bless_file "${pidfile}" || true' TERM
-        curse_file "${pidfile}"
-        trap 'remove -f "${pidfile}" || true' TERM
-        echo "$$" >"${pidfile}"  # $$ = pid of the current process
-        if kill "${pid}" 2>/dev/null; then
-          { sleep 5 || true; remove -f "${pidfile}"; } & pid="$!"
-          while exists "${pidfile}"; do :; done
-          kill "${pid}" 2>/dev/null || true
-        fi
+        kill "${pid}" 2>/dev/null || true
       fi
-      remove -f "${pidfile}"; trap - TERM
+      remove -f "${pidfile}"
       backup="$(ctrl_v | openssl base64 -e)"  # keep NULs
     }
     printf '%s' "${password}" | ctrl_c
@@ -444,8 +436,8 @@ show_password() (
         set -e
         trap '' HUP
         trap 'remove -f "${pidfile}" || true' EXIT
-        sleep "${SURPASS_CLIPBOARD_TIMEOUT}" & pid="$!"
         create_dir "$(parent_dir "${pidfile}")"
+        sleep "${SURPASS_CLIPBOARD_TIMEOUT}" & pid="$!"
         echo "${pid}" >"${pidfile}"  # $! = pid of sleep
         bless_file "${pidfile}"
         wait 2>/dev/null || true
@@ -1434,9 +1426,13 @@ if [ surpass = "${SURPASS_NAME}" ]; then
     if is_dir "${SURPASS_HOME}"; then
       # SURPASS_HOME is guarded by SURPASS_KEEPER
       if have find; then
-        find "${SURPASS_HOME}" -mindepth 1 -type d -empty -delete
+        find "${SURPASS_STORE}" "${SURPASS_TMPDIR}" \
+             -mindepth 1 -type d -empty -delete
       else
-        read_dir "${SURPASS_HOME}" '
+        read_dir "${SURPASS_STORE}" '
+          if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi
+        '
+        read_dir "${SURPASS_TMPDIR}" '
           if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi
         '
       fi
