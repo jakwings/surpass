@@ -1429,12 +1429,9 @@ if [ surpass = "${SURPASS_NAME}" ]; then
         find "${SURPASS_STORE}" "${SURPASS_TMPDIR}" \
              -mindepth 1 -type d -empty -delete
       else
-        read_dir "${SURPASS_STORE}" '
-          if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi
-        '
-        read_dir "${SURPASS_TMPDIR}" '
-          if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi
-        '
+        cmd='if is_dir "${FILE}"; then remove -fp "${FILEPATH}"; fi'
+        read_dir "${SURPASS_STORE}" "${cmd}"
+        read_dir "${SURPASS_TMPDIR}" "${cmd}"
       fi
     fi
   }
